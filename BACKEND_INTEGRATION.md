@@ -19,10 +19,10 @@
 #### AI 建議
 - **POST /api/agent** — 查詢 Physio Agent 建議（posture, user_message）
 
-#### 通知（馬達提醒）
-- **GET /api/notification/history** — 取得通知歷史（前端通知頁顯示用）
-- **GET /api/notification/pending** — 取得待處理的振動提醒通知（ESP32 振動提醒用）
-- **POST /api/notification/ack** — 確認通知已收到
+### 通知（馬達提醒）
+- **GET /api/notification/history** — 取得通知歷史（App 前端通知頁與輪詢使用）
+- **GET /api/notification/pending** — 僅供椅子硬體使用，App 禁止呼叫；讀取會將通知標記為已送出
+- **POST /api/notification/ack** — 僅供椅子硬體使用，App 不需要呼叫
 
 #### 座椅佔用
 - **POST /api/chair/checkin** — 登記目前使用者
@@ -92,8 +92,9 @@ POST /api/register
 ## 待實現功能
 
 ### 1. 坐姿感測器數據接收
-- ESP32 → 後端 (MQTT 或 HTTP)
-- 後端 → 前端（Web 輪詢或 WebSocket）
+- ESP32 → 後端使用 MQTT topic `chair/pressure/01`
+- 後端自動預測坐姿並寫入資料庫，App 不需要呼叫 `POST /api/posture`
+- 後端 → 前端目前使用 HTTP 輪詢，尚未使用 WebSocket
 
 ### 2. AI 建議完整流程
 - `ChairSyncController` 定期拉取最新坐姿
@@ -142,6 +143,17 @@ POST /api/register
 ---
 
 ## 後端期望的請求格式
+
+## 後端已確認的回應契約
+
+- `Authorization` 僅接受 `Token <token>`，不接受 `Bearer`。
+- `GET /api/me` 直接回傳使用者物件，不包在 `user` 欄位中。
+- `GET /api/posture/history` 直接回傳陣列，最新資料在最前面。
+- 坐姿、通知與座椅狀態沒有後端 `score` 欄位；前端分數由姿勢代碼推導。
+- 時間欄位統一為 ISO 8601 的 `timestamp`，沒有 `created_at`。
+- `GET /api/chair/status` 使用 `active` 表示是否有人入座；目前坐姿需讀取 posture history 最新資料。
+- 通知 history 回應包在 `notifications` 中；App 不得呼叫會消耗通知的 `notification/pending`。
+- ESP32 透過 MQTT 傳送壓力資料；目前單椅以最近一次 `chair/checkin` 的使用者歸屬資料。
 
 ### 註冊
 ```json

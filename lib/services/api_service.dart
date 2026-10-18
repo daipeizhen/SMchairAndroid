@@ -569,12 +569,7 @@ class ApiService {
         return [];
       }
 
-      final history = await fetch('notification/history');
-      if (history.isNotEmpty) {
-        return history;
-      }
-
-      return await fetch('notification/pending');
+      return await fetch('notification/history');
     } catch (_) {
       return [];
     }
