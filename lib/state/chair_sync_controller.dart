@@ -199,8 +199,8 @@ class ChairSyncController extends ChangeNotifier {
             item['posture'] as String? ?? item['label'] as String? ?? '未知';
         // The backend does not return a score; derive the UI score locally.
         final score = item['score'] is num
-          ? (item['score'] as num).toInt()
-          : ApiService.toScore(label);
+            ? (item['score'] as num).toInt()
+            : ApiService.toScore(label);
         final isGood = label == 'normal' || label == '姿勢正常';
         final parsedTime = DateTime.tryParse(
           item['timestamp']?.toString() ?? '',
