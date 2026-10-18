@@ -172,10 +172,12 @@ class _HomePageState extends State<HomePage> {
                     children: [
                       Row(
                         children: [
-                          _BrandBadge(
-                            colorScheme: colorScheme,
-                            showWebTag: true,
-                            compact: false,
+                          Expanded(
+                            child: _BrandBadge(
+                              colorScheme: colorScheme,
+                              showAndroidTag: true,
+                              compact: false,
+                            ),
                           ),
                           const Spacer(),
                           IconButton(
@@ -210,7 +212,7 @@ class _HomePageState extends State<HomePage> {
                                         : const Color(0xFFF1F5F9),
                                     borderRadius: BorderRadius.circular(18),
                                   ),
-                                  child: Row(
+                                  child: Column(
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
                                       Icon(
@@ -220,18 +222,18 @@ class _HomePageState extends State<HomePage> {
                                             ? Colors.white
                                             : const Color(0xFF475569),
                                       ),
-                                      const SizedBox(width: 14),
-                                      Expanded(
-                                        child: Text(
-                                          navItems[index]['label'] as String,
-                                          textAlign: TextAlign.center,
-                                          style: TextStyle(
-                                            fontSize: selected ? 18 : 17,
-                                            color: selected
-                                                ? Colors.white
-                                                : const Color(0xFF334155),
-                                            fontWeight: FontWeight.w800,
-                                          ),
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        navItems[index]['label'] as String,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(
+                                          fontSize: selected ? 14 : 13,
+                                          color: selected
+                                              ? Colors.white
+                                              : const Color(0xFF334155),
+                                          fontWeight: FontWeight.w800,
                                         ),
                                       ),
                                     ],
@@ -286,7 +288,7 @@ class _AuthLandingPage extends StatelessWidget {
                   children: [
                     _BrandBadge(
                       colorScheme: colorScheme,
-                      showWebTag: true,
+                      showAndroidTag: true,
                       compact: false,
                     ),
                     const SizedBox(height: 36),
@@ -354,18 +356,21 @@ class _AuthLandingPage extends StatelessWidget {
 class _BrandBadge extends StatelessWidget {
   const _BrandBadge({
     required this.colorScheme,
-    required this.showWebTag,
+    required this.showAndroidTag,
     required this.compact,
   });
 
   final ColorScheme colorScheme;
-  final bool showWebTag;
+  final bool showAndroidTag;
   final bool compact;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
+    return Wrap(
+      alignment: WrapAlignment.center,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 8,
+      runSpacing: 4,
       children: [
         Container(
           width: compact ? 32 : 40,
@@ -380,20 +385,18 @@ class _BrandBadge extends StatelessWidget {
             size: compact ? 20 : 26,
           ),
         ),
-        const SizedBox(width: 10),
         const Text(
           '智慧座椅',
           style: TextStyle(
-            fontSize: 40,
+            fontSize: 32,
             fontWeight: FontWeight.w900,
             color: Color(0xFF0F172A),
             letterSpacing: 1.2,
           ),
         ),
-        if (showWebTag) ...[
-          const SizedBox(width: 10),
+        if (showAndroidTag) ...[
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
             decoration: BoxDecoration(
               color: const Color(0xFF0F766E).withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(999),
@@ -402,9 +405,9 @@ class _BrandBadge extends StatelessWidget {
               ),
             ),
             child: const Text(
-              'WEB',
+              'Android',
               style: TextStyle(
-                fontSize: 20,
+                fontSize: 16,
                 fontWeight: FontWeight.w800,
                 color: Color(0xFF0F766E),
                 letterSpacing: 1.2,

@@ -127,17 +127,6 @@ class _AiAdvicePageState extends State<AiAdvicePage> {
     }
   }
 
-  Future<void> _acceptRecommendation() async {
-    final task = widget.wellnessController.taskForPosture(
-      widget.controller.postureCode,
-    );
-    await widget.wellnessController.acceptTask(task);
-    if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('已接受建議，請到健康花園完成伸展並留下回饋。')));
-  }
-
   Widget _buildAdviceText(String text) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

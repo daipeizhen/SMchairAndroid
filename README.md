@@ -25,31 +25,29 @@
 - Flutter SDK stable
 - Dart SDK（由 Flutter 提供）
 - VS Code 或 Android Studio
-- Chrome、Android、iOS、Windows、macOS 或 Linux 執行環境
+- Android SDK、Android Emulator 與一台 Android Virtual Device（AVD）
 
 ## 快速開始
 
 ```powershell
-cd C:\Users\DPZ\smart_chair_app
+cd C:\Users\DPZ\Documents\smartchair_android
 flutter pub get
 ```
 
-一般啟動：
+Android 模擬器啟動：
 
 ```powershell
-flutter run
+flutter emulators --launch Medium_Phone_API_36.1
+flutter devices
+flutter run -d emulator-5554 --dart-define=API_BASE_URL=https://sandbar-badass-subfloor.ngrok-free.dev
 ```
 
-Web 預覽建議使用固定 port，以保留瀏覽器登入與本地設定：
+若 `flutter devices` 顯示的 Android 裝置 ID 不是 `emulator-5554`，請使用實際顯示的 ID。也可以在 Android Studio 的 Device Manager 建立或啟動 AVD。
+
+產生 Android debug APK：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/start_web.ps1 -FixedPort 7357 -ApiBaseUrl "https://sandbar-badass-subfloor.ngrok-free.dev/api"
-```
-
-也可以直接使用 [開啟網頁指令.txt](開啟網頁指令.txt) 內的 Web 指令。API 網址也能透過 `--dart-define` 覆寫：
-
-```powershell
-flutter run -d chrome --dart-define=API_BASE_URL=https://example.com
+flutter build apk --debug --dart-define=API_BASE_URL=https://sandbar-badass-subfloor.ngrok-free.dev
 ```
 
 預設 API 網址目前是 `https://sandbar-badass-subfloor.ngrok-free.dev`，正式環境請使用自己的後端網址，不要依賴 ngrok 預設值。

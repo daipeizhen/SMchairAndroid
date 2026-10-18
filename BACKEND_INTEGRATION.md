@@ -115,10 +115,10 @@ POST /api/register
 
 ```powershell
 # 從 VS Code 終端或 PowerShell 執行
-.\scripts\start_web.ps1 -FixedPort 7357 -ApiBaseUrl "https://sandbar-badass-subfloor.ngrok-free.dev/api"
+.\scripts\start_android.ps1 -AvdName Medium_Phone_API_36.1 -DeviceId emulator-5554 -ApiBaseUrl "https://sandbar-badass-subfloor.ngrok-free.dev/api"
 ```
 
-請固定使用上面的指令，不要切回隨機埠；否則瀏覽器會換 origin，關閉後本地設定可能讀不到。
+請固定使用上面的 Android 指令，確保應用程式在 Android 模擬器上啟動並保留本地設定。
 
 ---
 

@@ -1,0 +1,5 @@
+請使用專案腳本啟動 Android 模擬器與 Flutter：
+powershell -ExecutionPolicy Bypass -File scripts/start_android.ps1 -AvdName Medium_Phone_API_36.1 -DeviceId emulator-5554 -ApiBaseUrl https://sandbar-badass-subfloor.ngrok-free.dev/api
+
+腳本會使用軟體 GPU、停用快照，並在模擬器已啟動時直接沿用現有裝置，避免同一個 AVD 重複啟動。
+如果模擬器啟動後的裝置 ID 不同，先執行 `flutter devices`，再把 `-DeviceId` 後面的值替換成 Android 裝置 ID。

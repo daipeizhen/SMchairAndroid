@@ -2,16 +2,18 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "Flutter Web: Live Preview",
+      "label": "Flutter Android: Emulator",
       "type": "shell",
       "command": "powershell",
       "args": [
         "-ExecutionPolicy",
         "Bypass",
         "-File",
-        "scripts/start_web.ps1",
-        "-FixedPort",
-        "7357",
+        "scripts/start_android.ps1",
+        "-AvdName",
+        "Medium_Phone_API_36.1",
+        "-DeviceId",
+        "emulator-5554",
         "-ApiBaseUrl",
         "https://sandbar-badass-subfloor.ngrok-free.dev/api"
       ],

@@ -2,23 +2,19 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Flutter Web Sync Preview",
+      "name": "Flutter Android Emulator",
       "request": "launch",
       "type": "dart",
       "program": "lib/main.dart",
-      "deviceId": "chrome",
-      "args": [
-        "--web-port=7357"
-      ]
+      "deviceId": "emulator-5554"
     },
     {
-      "name": "Flutter Web Sync Preview (With API)",
+      "name": "Flutter Android Emulator (With API)",
       "request": "launch",
       "type": "dart",
       "program": "lib/main.dart",
-      "deviceId": "chrome",
+      "deviceId": "emulator-5554",
       "args": [
-        "--web-port=7357",
         "--dart-define=API_BASE_URL=${input:apiBaseUrl}"
       ]
     }
