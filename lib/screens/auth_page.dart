@@ -456,7 +456,7 @@ class _AuthPageState extends State<AuthPage> {
                           ),
                           validator: (v) {
                             final text = (v ?? '').trim();
-                            if (text.isEmpty) return '請輸入電子郵件';
+                            if (text.isEmpty) return null;
                             if (!text.contains('@')) return '請輸入有效電子郵件';
                             return null;
                           },

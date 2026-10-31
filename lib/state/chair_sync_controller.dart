@@ -198,9 +198,7 @@ class ChairSyncController extends ChangeNotifier {
         final label =
             item['posture'] as String? ?? item['label'] as String? ?? '未知';
         // The backend does not return a score; derive the UI score locally.
-        final score = item['score'] is num
-            ? (item['score'] as num).toInt()
-            : ApiService.toScore(label);
+        final score = ApiService.toScore(label);
         final isGood = label == 'normal' || label == '姿勢正常';
         final parsedTime = DateTime.tryParse(
           item['timestamp']?.toString() ?? '',
@@ -247,7 +245,7 @@ class ChairSyncController extends ChangeNotifier {
     final source = _postureSource(payload);
     final code = _postureCodeFrom(source);
     final displayName = code.isEmpty ? '等待同步' : ApiService.toDisplayName(code);
-    final score = _intValue(source['score']) ?? ApiService.toScore(code);
+    final score = ApiService.toScore(code);
     final isSedentary =
         code == 'sedentary' ||
         displayName.contains('久坐') ||
@@ -331,13 +329,11 @@ class ChairSyncController extends ChangeNotifier {
     }
   }
 
-  int? _intValue(Object? value) {
-    if (value is int) return value;
-    if (value is num) return value.toInt();
-    return int.tryParse(value?.toString() ?? '');
-  }
-
   String _notificationPostureLabel(Map<String, dynamic> item) {
+    if (item['kind']?.toString() == 'auto_checkout') {
+      return '自動離座';
+    }
+
     for (final key in ['posture', 'posture_code', 'posture_display', 'label']) {
       final raw = item[key]?.toString().trim();
       if (raw != null && raw.isNotEmpty) {
@@ -383,13 +379,16 @@ class ChairSyncController extends ChangeNotifier {
       return '坐姿提醒：$cleaned';
     }
 
+    if (item['kind']?.toString() == 'auto_checkout') {
+      return '自動離座：椅子目前沒有偵測到人，回來後請重新入座。';
+    }
+
     return '坐姿提醒：$postureLabel，請調整坐姿。';
   }
 
   String _notificationTime(Map<String, dynamic> item) {
     final raw =
         item['timestamp']?.toString() ??
-        item['created_at']?.toString() ??
         item['createdAt']?.toString() ??
         item['time']?.toString() ??
         '';

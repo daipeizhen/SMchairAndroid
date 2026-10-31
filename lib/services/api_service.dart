@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -300,9 +300,9 @@ class ApiService {
     try {
       final body = <String, dynamic>{
         'username': username,
-        'email': email,
         'password': password,
       };
+      if (email.trim().isNotEmpty) body['email'] = email.trim();
       if (height != null) body['height'] = height;
       if (weight != null) body['weight'] = weight;
 
@@ -466,7 +466,7 @@ class ApiService {
       final safeMessage = userMessage.trim();
       final res = await http
           .post(
-            _buildApiUri('agent'),
+            _buildApiUri('agent/jobs'),
             headers: await _headers(auth: true),
             body: jsonEncode({
               'posture': postureCode.trim(),
@@ -475,24 +475,69 @@ class ApiService {
                   : safeMessage,
             }),
           )
-          .timeout(_aiAdviceTimeout);
+          .timeout(const Duration(seconds: 10));
 
-      final data = _decodeJsonMap(res.body);
-      if (res.statusCode == 200) {
-        final advice = (data?['advice'] as String?)?.trim() ?? '';
+      final queued = _decodeJsonMap(res.body);
+      if (res.statusCode == 202 && queued?['job_id'] != null) {
+        final jobId = queued!['job_id'].toString();
+        final deadline = DateTime.now().add(_aiAdviceTimeout);
+        while (DateTime.now().isBefore(deadline)) {
+          await Future<void>.delayed(const Duration(seconds: 2));
+          final jobResponse = await http
+              .get(
+                _buildApiUri('agent/jobs/$jobId'),
+                headers: await _headers(auth: true),
+              )
+              .timeout(const Duration(seconds: 10));
+          final job = _decodeJsonMap(jobResponse.body);
+          if (jobResponse.statusCode != 200 || job == null) {
+            return (
+              success: false,
+              advice: '',
+              message: _extractMessage(
+                job,
+                '查詢 AI 任務失敗：${jobResponse.statusCode}',
+              ),
+              postureDisplay: null,
+              posture: null,
+              recommendedExercises: const <Map<String, dynamic>>[],
+            );
+          }
+          final status = job['status']?.toString();
+          if (status == 'done') {
+            return (
+              success: true,
+              advice: job['advice']?.toString().trim() ?? '',
+              message: '取得 AI 建議成功',
+              postureDisplay: job['posture_display']?.toString(),
+              posture: job['posture']?.toString(),
+              recommendedExercises: _decodeRecommendedExercises(
+                job['recommended_exercises'],
+              ),
+            );
+          }
+          if (status == 'failed') {
+            return (
+              success: false,
+              advice: '',
+              message: _extractMessage(job, 'AI 分析失敗，請稍後再試。'),
+              postureDisplay: null,
+              posture: null,
+              recommendedExercises: const <Map<String, dynamic>>[],
+            );
+          }
+        }
         return (
-          success: true,
-          advice: advice,
-          message: '取得 AI 建議成功',
-          postureDisplay: data?['posture_display']?.toString(),
-          posture: data?['posture']?.toString(),
-          recommendedExercises: _decodeRecommendedExercises(
-            data?['recommended_exercises'],
-          ),
+          success: false,
+          advice: '',
+          message: 'AI 分析逾時，請稍後再試。',
+          postureDisplay: null,
+          posture: null,
+          recommendedExercises: const <Map<String, dynamic>>[],
         );
       }
 
-      final schemaError = data?['schema_error']?.toString().trim();
+      final schemaError = queued?['schema_error']?.toString().trim();
       if (schemaError != null && schemaError.isNotEmpty) {
         return (
           success: false,
@@ -508,7 +553,7 @@ class ApiService {
         success: false,
         advice: '',
         message: _extractMessage(
-          data,
+          queued,
           '伺服器回應 ${res.statusCode}，內容：${res.body.isNotEmpty ? res.body.substring(0, res.body.length > 120 ? 120 : res.body.length) : '空'}',
         ),
         postureDisplay: null,
@@ -818,37 +863,56 @@ class ApiService {
     try {
       final res = await http
           .post(
-            _buildApiUri('chair/calibrate/auto'),
+            _buildApiUri('chair/calibration'),
             headers: await _headers(auth: true),
           )
-          .timeout(const Duration(seconds: 15));
+          .timeout(const Duration(seconds: 10));
 
       final data = _decodeJsonMap(res.body);
-      final calibrated =
-          data?['calibrated'] == true ||
-          data?['status']?.toString() == 'calibrated';
-      final samples = data?['samples'] is num
-          ? (data?['samples'] as num).toInt()
-          : null;
-
-      if (res.statusCode == 200 && calibrated) {
+      if (res.statusCode != 202 || data?['request_id'] == null) {
         return (
-          success: true,
-          message: '校準成功',
-          calibrated: true,
-          samples: samples,
+          success: false,
+          message: _extractMessage(data, '校準請求失敗：${res.statusCode}'),
+          calibrated: false,
+          samples: null,
         );
       }
 
-      final message = _extractMessage(
-        data,
-        '伺服器回應 ${res.statusCode}，內容：${res.body.isNotEmpty ? res.body.substring(0, res.body.length > 120 ? 120 : res.body.length) : '空'}',
-      );
+      final deadline = DateTime.now().add(const Duration(seconds: 12));
+      while (DateTime.now().isBefore(deadline)) {
+        await Future<void>.delayed(const Duration(seconds: 1));
+        final statusResponse = await http
+            .get(
+              _buildApiUri('chair/calibration'),
+              headers: await _headers(auth: true),
+            )
+            .timeout(const Duration(seconds: 10));
+        final status = _decodeJsonMap(statusResponse.body);
+        final state = status?['status']?.toString();
+        if (state == 'done') {
+          return (
+            success: true,
+            message: '校準成功',
+            calibrated: true,
+            samples: status?['samples'] is num
+                ? (status?['samples'] as num).toInt()
+                : null,
+          );
+        }
+        if (state == 'failed') {
+          return (
+            success: false,
+            message: _extractMessage(status, '校準失敗，請稍後再試。'),
+            calibrated: false,
+            samples: null,
+          );
+        }
+      }
       return (
         success: false,
-        message: message,
+        message: '校準逾時，請確認感測器資料是否已進來',
         calibrated: false,
-        samples: samples,
+        samples: null,
       );
     } on TimeoutException {
       return (
