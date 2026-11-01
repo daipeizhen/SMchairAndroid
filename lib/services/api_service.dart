@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -60,6 +61,38 @@ class ApiService {
   static int toScore(String code) => _scores[code] ?? 70;
   static String toRisk(String code) => _risks[code] ?? '未知';
 
+  static Color postureColor(String value) {
+    final normalized = value.trim().toLowerCase();
+    switch (normalized) {
+      case 'normal':
+      case '姿勢正常':
+        return const Color(0xFF16A34A);
+      case 'forward':
+      case '頭部前傾':
+      case '身體前傾':
+      case '頭部前傾（鳥龜頭）':
+        return const Color(0xFFDC2626);
+      case 'left':
+      case '身體左傾':
+      case '左側傾斜':
+        return const Color(0xFFEA580C);
+      case 'right':
+      case '身體右傾':
+      case '右側傾斜':
+        return const Color(0xFFC2410C);
+      case 'recline':
+      case '過度後仰':
+      case '後仰過多':
+        return const Color(0xFF2563EB);
+      case 'sedentary':
+      case '久坐未動':
+      case '久坐過久':
+        return const Color(0xFF7C3AED);
+      default:
+        return const Color(0xFF64748B);
+    }
+  }
+
   // ── Token 管理 ──────────────────────────────────────────────
   static Future<String?> getToken() async {
     final prefs = await SharedPreferences.getInstance();
@@ -104,7 +137,6 @@ class ApiService {
     debugPrint(
       'ApiService._headers -> tokenPresent=${token != null && token.isNotEmpty}, auth=$auth',
     );
-    debugPrint('ApiService._headers -> headers=$headers');
     return headers;
   }
 
@@ -389,29 +421,6 @@ class ApiService {
   }
 
   // ── 坐姿 ────────────────────────────────────────────────────
-  static Future<Map<String, dynamic>?> getLatestPosture() async {
-    try {
-      if (!await isLoggedIn()) {
-        return null;
-      }
-
-      final res = await http
-          .get(
-            _buildApiUri('posture/history', queryParameters: {'limit': '1'}),
-            headers: await _headers(auth: true),
-          )
-          .timeout(const Duration(seconds: 10));
-
-      if (res.statusCode == 200) {
-        final list = jsonDecode(res.body) as List;
-        return list.isNotEmpty ? list.first as Map<String, dynamic> : null;
-      }
-      return null;
-    } catch (_) {
-      return null;
-    }
-  }
-
   static Future<List<Map<String, dynamic>>> getPostureHistory({
     int limit = 50,
   }) async {
@@ -464,7 +473,7 @@ class ApiService {
       }
 
       final safeMessage = userMessage.trim();
-      final res = await http
+      final submitRes = await http
           .post(
             _buildApiUri('agent/jobs'),
             headers: await _headers(auth: true),
@@ -477,85 +486,86 @@ class ApiService {
           )
           .timeout(const Duration(seconds: 10));
 
-      final queued = _decodeJsonMap(res.body);
-      if (res.statusCode == 202 && queued?['job_id'] != null) {
-        final jobId = queued!['job_id'].toString();
-        final deadline = DateTime.now().add(_aiAdviceTimeout);
-        while (DateTime.now().isBefore(deadline)) {
-          await Future<void>.delayed(const Duration(seconds: 2));
-          final jobResponse = await http
-              .get(
-                _buildApiUri('agent/jobs/$jobId'),
-                headers: await _headers(auth: true),
-              )
-              .timeout(const Duration(seconds: 10));
-          final job = _decodeJsonMap(jobResponse.body);
-          if (jobResponse.statusCode != 200 || job == null) {
-            return (
-              success: false,
-              advice: '',
-              message: _extractMessage(
-                job,
-                '查詢 AI 任務失敗：${jobResponse.statusCode}',
-              ),
-              postureDisplay: null,
-              posture: null,
-              recommendedExercises: const <Map<String, dynamic>>[],
-            );
-          }
-          final status = job['status']?.toString();
-          if (status == 'done') {
-            return (
-              success: true,
-              advice: job['advice']?.toString().trim() ?? '',
-              message: '取得 AI 建議成功',
-              postureDisplay: job['posture_display']?.toString(),
-              posture: job['posture']?.toString(),
-              recommendedExercises: _decodeRecommendedExercises(
-                job['recommended_exercises'],
-              ),
-            );
-          }
-          if (status == 'failed') {
-            return (
-              success: false,
-              advice: '',
-              message: _extractMessage(job, 'AI 分析失敗，請稍後再試。'),
-              postureDisplay: null,
-              posture: null,
-              recommendedExercises: const <Map<String, dynamic>>[],
-            );
-          }
-        }
+      final submitData = _decodeJsonMap(submitRes.body);
+      if (submitRes.statusCode != 202) {
         return (
           success: false,
           advice: '',
-          message: 'AI 分析逾時，請稍後再試。',
+          message: _extractMessage(
+            submitData,
+            '送出 AI 建議失敗：${submitRes.statusCode}',
+          ),
           postureDisplay: null,
           posture: null,
           recommendedExercises: const <Map<String, dynamic>>[],
         );
       }
 
-      final schemaError = queued?['schema_error']?.toString().trim();
-      if (schemaError != null && schemaError.isNotEmpty) {
+      final jobId = submitData?['job_id']?.toString().trim() ?? '';
+      if (jobId.isEmpty) {
         return (
           success: false,
           advice: '',
-          message: schemaError,
+          message: 'AI 回應缺少任務編號。',
           postureDisplay: null,
           posture: null,
           recommendedExercises: const <Map<String, dynamic>>[],
         );
+      }
+
+      final deadline = DateTime.now().add(_aiAdviceTimeout);
+      while (DateTime.now().isBefore(deadline)) {
+        final resultRes = await http
+            .get(
+              _buildApiUri('agent/jobs/$jobId'),
+              headers: await _headers(auth: true),
+            )
+            .timeout(const Duration(seconds: 10));
+        final data = _decodeJsonMap(resultRes.body);
+        final status = data?['status']?.toString().toLowerCase();
+
+        if (resultRes.statusCode == 200 && status == 'done') {
+          return (
+            success: true,
+            advice: (data?['advice'] as String?)?.trim() ?? '',
+            message: '取得 AI 建議成功',
+            postureDisplay: data?['posture_display']?.toString(),
+            posture: data?['posture']?.toString(),
+            recommendedExercises: _decodeRecommendedExercises(
+              data?['recommended_exercises'],
+            ),
+          );
+        }
+        if (status == 'failed') {
+          return (
+            success: false,
+            advice: '',
+            message: _extractMessage(data, 'AI 建議生成失敗。'),
+            postureDisplay: null,
+            posture: null,
+            recommendedExercises: const <Map<String, dynamic>>[],
+          );
+        }
+        if (resultRes.statusCode != 200) {
+          return (
+            success: false,
+            advice: '',
+            message: _extractMessage(
+              data,
+              '查詢 AI 任務失敗：${resultRes.statusCode}',
+            ),
+            postureDisplay: null,
+            posture: null,
+            recommendedExercises: const <Map<String, dynamic>>[],
+          );
+        }
+        await Future<void>.delayed(const Duration(seconds: 2));
       }
 
       return (
         success: false,
         advice: '',
-        message: _extractMessage(
-          queued,
-          '伺服器回應 ${res.statusCode}，內容：${res.body.isNotEmpty ? res.body.substring(0, res.body.length > 120 ? 120 : res.body.length) : '空'}',
-        ),
+        message: 'AI 等待超時，請稍後再試。',
         postureDisplay: null,
         posture: null,
         recommendedExercises: const <Map<String, dynamic>>[],
@@ -586,9 +596,94 @@ class ApiService {
     return value
         .whereType<Map>()
         .map((item) => item.cast<String, dynamic>())
-        .where((item) => item['name']?.toString().trim().isNotEmpty ?? false)
+        .where(
+          (item) =>
+              (item['title'] ?? item['name'])?.toString().trim().isNotEmpty ??
+              false,
+        )
         .take(3)
         .toList();
+  }
+
+  static Future<List<Map<String, dynamic>>> getStretchPlan() async {
+    try {
+      if (!await isLoggedIn()) return [];
+      final response = await http
+          .get(
+            _buildApiUri('agent/stretch-plan'),
+            headers: await _headers(auth: true),
+          )
+          .timeout(const Duration(seconds: 15));
+      if (response.statusCode != 200) return [];
+
+      final decoded = jsonDecode(response.body);
+      final value = decoded is List
+          ? decoded
+          : decoded is Map
+          ? (decoded['recommended_exercises'] ??
+                decoded['exercises'] ??
+                decoded['tasks'] ??
+                decoded['data'])
+          : null;
+      if (value is! List) return [];
+      return value
+          .whereType<Map>()
+          .map((item) => item.cast<String, dynamic>())
+          .take(3)
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  static Future<bool> completeWellnessTask({
+    required int exerciseId,
+    required String source,
+    String feedback = '',
+  }) async {
+    try {
+      final response = await http
+          .post(
+            _buildApiUri('wellness/complete'),
+            headers: await _headers(auth: true),
+            body: jsonEncode({
+              'exercise_id': exerciseId,
+              'source': source,
+              if (feedback.trim().isNotEmpty) 'feedback': feedback.trim(),
+            }),
+          )
+          .timeout(const Duration(seconds: 10));
+      return response.statusCode == 200 || response.statusCode == 201;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<List<Map<String, dynamic>>> getWellnessHistory({
+    int days = 30,
+  }) async {
+    try {
+      final response = await http
+          .get(
+            _buildApiUri(
+              'wellness/history',
+              queryParameters: {'days': '$days'},
+            ),
+            headers: await _headers(auth: true),
+          )
+          .timeout(const Duration(seconds: 10));
+      if (response.statusCode != 200) return [];
+      final decoded = jsonDecode(response.body);
+      final value = decoded is Map ? decoded['completions'] : decoded;
+      return value is List
+          ? value
+                .whereType<Map>()
+                .map((item) => item.cast<String, dynamic>())
+                .toList()
+          : [];
+    } catch (_) {
+      return [];
+    }
   }
 
   // ── 通知 ────────────────────────────────────────────────────
@@ -621,7 +716,7 @@ class ApiService {
   }
 
   // ── 使用者設定 ──────────────────────────────────────────────────────
-  /// 更新使用者資料（身高、體重、Email）到後端。
+  /// 更新使用者資料（顯示名稱、身高、體重、Email）到後端。
   static Future<bool> updateMe(Map<String, dynamic> updates) async {
     try {
       final res = await http
@@ -810,99 +905,140 @@ class ApiService {
     }
   }
 
-  static Future<({bool success, String message})> updateAvatar(
-    Map<String, dynamic> updates,
-  ) async {
+  static Future<({bool success, String message, String? avatarUrl})>
+  uploadAvatar({required Uint8List bytes, required String filename}) async {
     try {
-      final res = await http
-          .post(
-            _buildApiUri('me/avatar'),
-            headers: await _headers(auth: true),
-            body: jsonEncode(updates),
-          )
-          .timeout(const Duration(seconds: 10));
-
-      if (res.statusCode == 200 ||
-          res.statusCode == 201 ||
-          res.statusCode == 202 ||
-          res.statusCode == 204) {
-        return (success: true, message: '頭像已更新');
+      final headers = await _headers(auth: true);
+      headers.remove('Content-Type');
+      final request =
+          http.MultipartRequest('POST', _buildApiUri('me/avatar/upload'))
+            ..headers.addAll(headers)
+            ..files.add(
+              http.MultipartFile.fromBytes('file', bytes, filename: filename),
+            );
+      final response = await request.send().timeout(
+        const Duration(seconds: 30),
+      );
+      final body = await response.stream.bytesToString();
+      final data = _decodeJsonMap(body);
+      if (response.statusCode == 200) {
+        final avatarUrl = data?['avatar_url']?.toString().trim();
+        if (avatarUrl == null || avatarUrl.isEmpty) {
+          return (
+            success: false,
+            message: '头像上传成功，但后端没有返回头像网址。',
+            avatarUrl: null,
+          );
+        }
+        return (success: true, message: '头像已更新', avatarUrl: avatarUrl);
       }
 
-      final data = _decodeJsonMap(res.body);
       return (
         success: false,
-        message: _extractMessage(data, '更新頭像失敗：${res.statusCode}'),
+        message: _extractMessage(data, '更新头像失败：${response.statusCode}'),
+        avatarUrl: null,
       );
     } on TimeoutException {
-      return (success: false, message: '連線逾時，請稍後再試');
+      return (success: false, message: '头像上传逾时，请稍后再试。', avatarUrl: null);
     } catch (error) {
-      return (success: false, message: '更新頭像失敗：${error.toString()}');
+      return (success: false, message: '头像上传失败：$error', avatarUrl: null);
     }
   }
 
-  /// 將本地設定同步到後端（舊名稱，現在轉向 updateMe）。
-  static Future<bool> saveUserSettings(Map<String, dynamic> settings) async {
-    return updateMe(settings);
+  static Future<Uint8List?> loadAvatarBytes(String avatarUrl) async {
+    try {
+      final response = await http
+          .get(Uri.parse(avatarUrl), headers: await _headers(auth: true))
+          .timeout(const Duration(seconds: 15));
+      if (response.statusCode == 200 &&
+          response.bodyBytes.isNotEmpty &&
+          (response.headers['content-type']?.startsWith('image/') ?? false)) {
+        return response.bodyBytes;
+      }
+      debugPrint(
+        'loadAvatarBytes failed: status=${response.statusCode}, '
+        'contentType=${response.headers['content-type']}',
+      );
+      return null;
+    } catch (error) {
+      debugPrint('loadAvatarBytes error: $error');
+      return null;
+    }
   }
 
   // ── 座椅佔用 ──────────────────────────────────────────────────────────────
-  static Future<void> chairCheckin() async {
+  static Future<({bool success, bool calibrated, String message})>
+  chairCheckin() async {
     try {
-      await http
+      final res = await http
           .post(
             _buildApiUri('chair/checkin'),
             headers: await _headers(auth: true),
           )
           .timeout(const Duration(seconds: 5));
-    } catch (_) {}
+      final data = _decodeJsonMap(res.body);
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        return (
+          success: true,
+          calibrated: data?['calibrated'] == true,
+          message: '入座成功',
+        );
+      }
+      return (
+        success: false,
+        calibrated: false,
+        message: _extractMessage(data, '入座失敗：${res.statusCode}'),
+      );
+    } on TimeoutException {
+      return (success: false, calibrated: false, message: '入座逾時');
+    } catch (error) {
+      return (success: false, calibrated: false, message: '入座失敗：$error');
+    }
   }
 
   static Future<({bool success, String message, bool calibrated, int? samples})>
   calibrateChairAuto() async {
     try {
-      final res = await http
+      final startRes = await http
           .post(
             _buildApiUri('chair/calibration'),
             headers: await _headers(auth: true),
           )
           .timeout(const Duration(seconds: 10));
 
-      final data = _decodeJsonMap(res.body);
-      if (res.statusCode != 202 || data?['request_id'] == null) {
+      var data = _decodeJsonMap(startRes.body);
+      if (startRes.statusCode != 202) {
         return (
           success: false,
-          message: _extractMessage(data, '校準請求失敗：${res.statusCode}'),
+          message: _extractMessage(data, '校準失敗：${startRes.statusCode}'),
           calibrated: false,
           samples: null,
         );
       }
 
-      final deadline = DateTime.now().add(const Duration(seconds: 12));
+      final deadline = DateTime.now().add(const Duration(seconds: 15));
       while (DateTime.now().isBefore(deadline)) {
         await Future<void>.delayed(const Duration(seconds: 1));
-        final statusResponse = await http
+        final statusRes = await http
             .get(
               _buildApiUri('chair/calibration'),
               headers: await _headers(auth: true),
             )
-            .timeout(const Duration(seconds: 10));
-        final status = _decodeJsonMap(statusResponse.body);
-        final state = status?['status']?.toString();
-        if (state == 'done') {
+            .timeout(const Duration(seconds: 5));
+        data = _decodeJsonMap(statusRes.body);
+        final status = data?['status']?.toString().toLowerCase();
+        if (statusRes.statusCode == 200 && status == 'done') {
           return (
             success: true,
             message: '校準成功',
             calibrated: true,
-            samples: status?['samples'] is num
-                ? (status?['samples'] as num).toInt()
-                : null,
+            samples: null,
           );
         }
-        if (state == 'failed') {
+        if (status == 'failed') {
           return (
             success: false,
-            message: _extractMessage(status, '校準失敗，請稍後再試。'),
+            message: _extractMessage(data, '校準失敗。'),
             calibrated: false,
             samples: null,
           );
@@ -910,7 +1046,7 @@ class ApiService {
       }
       return (
         success: false,
-        message: '校準逾時，請確認感測器資料是否已進來',
+        message: '校準逾時，請稍後再試。',
         calibrated: false,
         samples: null,
       );
@@ -945,7 +1081,10 @@ class ApiService {
   static Future<Map<String, dynamic>?> getChairStatus() async {
     try {
       final res = await http
-          .get(_buildApiUri('chair/status'), headers: await _headers())
+          .get(
+            _buildApiUri('chair/status'),
+            headers: await _headers(auth: true),
+          )
           .timeout(const Duration(seconds: 5));
 
       if (res.statusCode == 200) {

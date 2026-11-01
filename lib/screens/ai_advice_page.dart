@@ -104,6 +104,8 @@ class _AiAdvicePageState extends State<AiAdvicePage> {
           _adviceVisible = true;
           _recommendedExercises = result.recommendedExercises;
         });
+        widget.wellnessController.setAiAdviceTasks(result.recommendedExercises);
+        await widget.wellnessController.refreshDailyTasks();
       } else {
         messenger.showSnackBar(SnackBar(content: Text(result.message)));
         setState(() {
@@ -111,6 +113,7 @@ class _AiAdvicePageState extends State<AiAdvicePage> {
           _advice = '按下「取得 AI 建議」以查看 AI 建議。';
           _recommendedExercises = const [];
         });
+        widget.wellnessController.setAiAdviceTasks(const []);
       }
     } catch (_) {
       if (!mounted) return;
@@ -120,6 +123,7 @@ class _AiAdvicePageState extends State<AiAdvicePage> {
         _advice = '按下「取得 AI 建議」以查看 AI 建議。';
         _recommendedExercises = const [];
       });
+      widget.wellnessController.setAiAdviceTasks(const []);
     } finally {
       if (mounted) {
         setState(() => _isFetchingAdvice = false);
@@ -336,25 +340,6 @@ class _AiAdvicePageState extends State<AiAdvicePage> {
     );
   }
 
-  Color _postureColor(String code) {
-    switch (code) {
-      case 'normal':
-        return const Color(0xFF16A34A);
-      case 'forward':
-        return const Color(0xFFDC2626);
-      case 'left':
-        return const Color(0xFFEA580C);
-      case 'right':
-        return const Color(0xFFC2410C);
-      case 'recline':
-        return const Color(0xFF2563EB);
-      case 'sedentary':
-        return const Color(0xFF7C3AED);
-      default:
-        return Colors.grey;
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final postureCode = widget.controller.postureCode;
@@ -365,7 +350,7 @@ class _AiAdvicePageState extends State<AiAdvicePage> {
         ? ApiService.toRisk(postureCode)
         : '尚無資料';
     final color = postureCode.isNotEmpty
-        ? _postureColor(postureCode)
+        ? ApiService.postureColor(postureCode)
         : const Color(0xFF64748B);
 
     return Scaffold(

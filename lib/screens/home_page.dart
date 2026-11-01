@@ -27,6 +27,7 @@ class _HomePageState extends State<HomePage> {
   int currentIndex = 0;
   bool _isLoggedIn = false;
   String? _userEmail;
+  int _authRefreshVersion = 0;
 
   final List<Map<String, dynamic>> navItems = const [
     {'icon': Icons.event_seat, 'label': '健康總覽', 'hint': '坐姿與報表'},
@@ -43,11 +44,11 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _refreshAuthState() async {
+    final refreshVersion = ++_authRefreshVersion;
     final wasLoggedIn = _isLoggedIn;
     final loggedIn = await ApiService.isLoggedIn();
     final email = await ApiService.getUserEmail();
-    await widget.wellnessController.initialize(email);
-    if (mounted) {
+    if (mounted && refreshVersion == _authRefreshVersion) {
       setState(() {
         _isLoggedIn = loggedIn;
         _userEmail = email;
@@ -63,6 +64,9 @@ class _HomePageState extends State<HomePage> {
         widget.chairSyncController.stopSession();
         widget.chairSyncController.stopAutoSync();
       }
+    }
+    if (refreshVersion == _authRefreshVersion) {
+      await widget.wellnessController.initialize(email);
     }
   }
 
@@ -170,79 +174,131 @@ class _HomePageState extends State<HomePage> {
                   ),
                   child: Column(
                     children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _BrandBadge(
-                              colorScheme: colorScheme,
-                              showAndroidTag: true,
-                              compact: false,
-                            ),
-                          ),
-                          const Spacer(),
-                          IconButton(
-                            onPressed: _logout,
-                            tooltip: '登出',
-                            icon: const Icon(Icons.logout_rounded),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      Row(
-                        children: List.generate(navItems.length, (index) {
-                          final bool selected = index == currentIndex;
-                          return Expanded(
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 4,
-                              ),
-                              child: InkWell(
-                                borderRadius: BorderRadius.circular(18),
-                                onTap: () =>
-                                    setState(() => currentIndex = index),
-                                child: AnimatedContainer(
-                                  duration: const Duration(milliseconds: 180),
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 18,
-                                    horizontal: 16,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: selected
-                                        ? colorScheme.primary
-                                        : const Color(0xFFF1F5F9),
-                                    borderRadius: BorderRadius.circular(18),
-                                  ),
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Icon(
-                                        navItems[index]['icon'] as IconData,
-                                        size: selected ? 26 : 24,
-                                        color: selected
-                                            ? Colors.white
-                                            : const Color(0xFF475569),
-                                      ),
-                                      const SizedBox(height: 6),
-                                      Text(
-                                        navItems[index]['label'] as String,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        textAlign: TextAlign.center,
-                                        style: TextStyle(
-                                          fontSize: selected ? 14 : 13,
-                                          color: selected
-                                              ? Colors.white
-                                              : const Color(0xFF334155),
-                                          fontWeight: FontWeight.w800,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          final compact = constraints.maxWidth < 430;
+                          return Row(
+                            children: [
+                              Expanded(
+                                child: _BrandBadge(
+                                  colorScheme: colorScheme,
+                                  showAndroidTag: !compact,
+                                  compact: compact,
                                 ),
                               ),
-                            ),
+                              IconButton(
+                                onPressed: _logout,
+                                tooltip: '登出',
+                                icon: const Icon(Icons.logout_rounded),
+                              ),
+                            ],
                           );
-                        }),
+                        },
+                      ),
+                      const SizedBox(height: 10),
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          final compact = constraints.maxWidth < 430;
+                          return Row(
+                            children: List.generate(navItems.length, (index) {
+                              final bool selected = index == currentIndex;
+                              return Expanded(
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 4,
+                                  ),
+                                  child: InkWell(
+                                    borderRadius: BorderRadius.circular(18),
+                                    onTap: () =>
+                                        setState(() => currentIndex = index),
+                                    child: AnimatedContainer(
+                                      duration:
+                                          const Duration(milliseconds: 180),
+                                      padding: EdgeInsets.symmetric(
+                                        vertical: compact ? 12 : 18,
+                                        horizontal: compact ? 4 : 16,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: selected
+                                            ? colorScheme.primary
+                                            : const Color(0xFFF1F5F9),
+                                        borderRadius: BorderRadius.circular(18),
+                                      ),
+                                      child: compact
+                                          ? Column(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Icon(
+                                                  navItems[index]['icon']
+                                                      as IconData,
+                                                  size: selected ? 24 : 22,
+                                                  color: selected
+                                                      ? Colors.white
+                                                      : const Color(0xFF475569),
+                                                ),
+                                                const SizedBox(height: 4),
+                                                Text(
+                                                  navItems[index]['label']
+                                                      as String,
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  textAlign: TextAlign.center,
+                                                  style: TextStyle(
+                                                    fontSize:
+                                                        selected ? 14 : 13,
+                                                    color: selected
+                                                        ? Colors.white
+                                                        : const Color(
+                                                            0xFF334155,
+                                                          ),
+                                                    fontWeight: FontWeight.w800,
+                                                  ),
+                                                ),
+                                              ],
+                                            )
+                                          : Row(
+                                              mainAxisAlignment:
+                                                  MainAxisAlignment.center,
+                                              children: [
+                                                Icon(
+                                                  navItems[index]['icon']
+                                                      as IconData,
+                                                  size: selected ? 26 : 24,
+                                                  color: selected
+                                                      ? Colors.white
+                                                      : const Color(0xFF475569),
+                                                ),
+                                                const SizedBox(width: 14),
+                                                Flexible(
+                                                  child: Text(
+                                                    navItems[index]['label']
+                                                        as String,
+                                                    textAlign: TextAlign.center,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                    style: TextStyle(
+                                                      fontSize:
+                                                          selected ? 18 : 17,
+                                                      color: selected
+                                                          ? Colors.white
+                                                          : const Color(
+                                                              0xFF334155,
+                                                            ),
+                                                      fontWeight:
+                                                          FontWeight.w800,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }),
+                          );
+                        },
                       ),
                     ],
                   ),
@@ -366,56 +422,63 @@ class _BrandBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Wrap(
-      alignment: WrapAlignment.center,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      spacing: 8,
-      runSpacing: 4,
-      children: [
-        Container(
-          width: compact ? 32 : 40,
-          height: compact ? 32 : 40,
-          decoration: BoxDecoration(
-            color: colorScheme.primary.withValues(alpha: 0.16),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Icon(
-            Icons.event_seat_rounded,
-            color: colorScheme.primary,
-            size: compact ? 20 : 26,
-          ),
-        ),
-        const Text(
-          '智慧座椅',
-          style: TextStyle(
-            fontSize: 32,
-            fontWeight: FontWeight.w900,
-            color: Color(0xFF0F172A),
-            letterSpacing: 1.2,
-          ),
-        ),
-        if (showAndroidTag) ...[
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-            decoration: BoxDecoration(
-              color: const Color(0xFF0F766E).withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(
-                color: const Color(0xFF0F766E).withValues(alpha: 0.2),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compactLayout = compact || constraints.maxWidth < 300;
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: compactLayout ? 32 : 40,
+              height: compactLayout ? 32 : 40,
+              decoration: BoxDecoration(
+                color: colorScheme.primary.withValues(alpha: 0.16),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                Icons.event_seat_rounded,
+                color: colorScheme.primary,
+                size: compactLayout ? 20 : 26,
               ),
             ),
-            child: const Text(
-              'Android',
+            const SizedBox(width: 8),
+            Text(
+              '智慧座椅',
               style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
-                color: Color(0xFF0F766E),
-                letterSpacing: 1.2,
+                fontSize: compactLayout ? 28 : 40,
+                fontWeight: FontWeight.w900,
+                color: const Color(0xFF0F172A),
+                letterSpacing: compactLayout ? 0.5 : 1.2,
               ),
             ),
-          ),
-        ],
-      ],
+            if (showAndroidTag) ...[
+              const SizedBox(width: 8),
+              Container(
+                padding: EdgeInsets.symmetric(
+                  horizontal: compactLayout ? 8 : 14,
+                  vertical: compactLayout ? 5 : 7,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0F766E).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(
+                    color: const Color(0xFF0F766E).withValues(alpha: 0.2),
+                  ),
+                ),
+                child: Text(
+                  'Android',
+                  style: TextStyle(
+                    fontSize: compactLayout ? 14 : 20,
+                    fontWeight: FontWeight.w800,
+                    color: const Color(0xFF0F766E),
+                    letterSpacing: compactLayout ? 0.5 : 1.2,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        );
+      },
     );
   }
 }

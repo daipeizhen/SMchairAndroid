@@ -1,7 +1,8 @@
 param(
   [string]$AvdName = "Medium_Phone_API_36.1",
   [string]$DeviceId = "emulator-5554",
-  [string]$ApiBaseUrl = "https://sandbar-badass-subfloor.ngrok-free.dev/api"
+  [string]$ApiBaseUrl = "https://sandbar-badass-subfloor.ngrok-free.dev/api",
+  [switch]$NoDds
 )
 
 $sdk = if ($env:ANDROID_SDK_ROOT) {
@@ -20,8 +21,27 @@ if (-not (Test-Path $adb) -or -not (Test-Path $emulator)) {
 }
 
 & $adb start-server | Out-Null
-$connected = (& $adb devices) -match "$DeviceId\s+device"
-if (-not $connected) {
+$deviceLine = (& $adb devices | Select-String ("^{0}\s+" -f [regex]::Escape($DeviceId)))
+$deviceStatus = if ($deviceLine) {
+  ($deviceLine -split "\s+")[1]
+} else {
+  ""
+}
+
+if ($deviceStatus -eq "offline") {
+  Write-Host "Android 裝置目前 offline，重新啟動 ADB..."
+  & $adb kill-server | Out-Null
+  & $adb start-server | Out-Null
+  Start-Sleep -Seconds 2
+  $deviceLine = (& $adb devices | Select-String ("^{0}\s+" -f [regex]::Escape($DeviceId)))
+  $deviceStatus = if ($deviceLine) {
+    ($deviceLine -split "\s+")[1]
+  } else {
+    ""
+  }
+}
+
+if ($deviceStatus -ne "device") {
   Write-Host "啟動 Android 模擬器 $AvdName..."
   Start-Process -FilePath $emulator -ArgumentList "-avd", $AvdName, "-no-snapshot", "-no-boot-anim", "-gpu", "swiftshader_indirect", "-netdelay", "none", "-netspeed", "full"
 }
@@ -45,4 +65,14 @@ if (-not $ready) {
 }
 
 Write-Host "啟動 Flutter Android 應用程式..."
-flutter run -d $DeviceId --device-timeout 120 "--dart-define=API_BASE_URL=$ApiBaseUrl"
+$flutterArgs = @(
+  "run",
+  "-d", $DeviceId,
+  "--device-timeout", "120",
+  "--dart-define=API_BASE_URL=$ApiBaseUrl"
+)
+if ($NoDds) {
+  $flutterArgs += "--no-dds"
+  Write-Host "已停用 Dart Development Service（僅建議用於服務協定連線失敗時）。"
+}
+flutter @flutterArgs
