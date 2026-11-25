@@ -30,11 +30,10 @@ class _HomePageState extends State<HomePage> {
   int _authRefreshVersion = 0;
 
   final List<Map<String, dynamic>> navItems = const [
-    {'icon': Icons.event_seat, 'label': '健康總覽', 'hint': '坐姿與報表'},
+    {'icon': Icons.event_seat, 'label': '健康總覽', 'hint': '坐姿監測'},
     {'icon': Icons.psychology_alt_rounded, 'label': 'AI 建議', 'hint': '治療師建議'},
     {'icon': Icons.local_florist_rounded, 'label': '健康花園', 'hint': '每日養成'},
     {'icon': Icons.notifications_active_rounded, 'label': '通知', 'hint': '提醒中心'},
-    {'icon': Icons.tune_rounded, 'label': '設定', 'hint': '個人偏好'},
   ];
 
   @override
@@ -48,6 +47,7 @@ class _HomePageState extends State<HomePage> {
     final wasLoggedIn = _isLoggedIn;
     final loggedIn = await ApiService.isLoggedIn();
     final email = await ApiService.getUserEmail();
+    final chairId = loggedIn ? await ApiService.getSavedChairId() : null;
     if (mounted && refreshVersion == _authRefreshVersion) {
       setState(() {
         _isLoggedIn = loggedIn;
@@ -57,7 +57,7 @@ class _HomePageState extends State<HomePage> {
         }
       });
 
-      if (loggedIn && !wasLoggedIn) {
+      if (loggedIn && chairId != null && chairId.isNotEmpty) {
         widget.chairSyncController.startSession();
         widget.chairSyncController.startAutoSync();
       } else if (!loggedIn && wasLoggedIn) {
@@ -99,8 +99,46 @@ class _HomePageState extends State<HomePage> {
     await ApiService.logout();
     if (!mounted) return;
     widget.chairSyncController.stopSession();
+    widget.chairSyncController.clearUserData();
     _showMsg('已登出');
     await _refreshAuthState();
+  }
+
+  Future<void> _accountDeleted() async {
+    if (!mounted) return;
+    widget.chairSyncController.stopSession();
+    widget.chairSyncController.stopAutoSync();
+    widget.chairSyncController.clearUserData();
+    _showMsg('帳號已刪除');
+    await _refreshAuthState();
+  }
+
+  Future<void> _logoutFromSettings() async {
+    await _logout();
+    if (mounted) Navigator.of(context).pop();
+  }
+
+  Future<void> _accountDeletedFromSettings() async {
+    await _accountDeleted();
+    if (mounted) Navigator.of(context).pop();
+  }
+
+  void _openSettings() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => Scaffold(
+          appBar: AppBar(title: const Text('設定')),
+          body: SettingPage(
+            isLoggedIn: _isLoggedIn,
+            userEmail: _userEmail,
+            wellnessController: widget.wellnessController,
+            onLogout: _logoutFromSettings,
+            onAccountDeleted: _accountDeletedFromSettings,
+            onProfileChanged: _refreshAuthState,
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -121,7 +159,7 @@ class _HomePageState extends State<HomePage> {
         wellnessController: widget.wellnessController,
         onOpenAi: () => setState(() => currentIndex = 1),
         onOpenGarden: () => setState(() => currentIndex = 2),
-        onOpenSettings: () => setState(() => currentIndex = 4),
+        onOpenSettings: _openSettings,
       ),
       AiAdvicePage(
         controller: widget.chairSyncController,
@@ -135,13 +173,6 @@ class _HomePageState extends State<HomePage> {
       NotificationPage(
         controller: widget.chairSyncController,
         wellnessController: widget.wellnessController,
-      ),
-      SettingPage(
-        isLoggedIn: _isLoggedIn,
-        userEmail: _userEmail,
-        wellnessController: widget.wellnessController,
-        onLogout: _logout,
-        onProfileChanged: _refreshAuthState,
       ),
     ];
 
@@ -158,156 +189,49 @@ class _HomePageState extends State<HomePage> {
           child: Column(
             children: [
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-                child: Container(
-                  padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(24),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.06),
-                        blurRadius: 18,
-                        offset: const Offset(0, 8),
+                padding: const EdgeInsets.fromLTRB(18, 12, 12, 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: _BrandBadge(
+                        colorScheme: colorScheme,
+                        showAndroidTag: false,
+                        compact: true,
                       ),
-                    ],
-                  ),
-                  child: Column(
-                    children: [
-                      LayoutBuilder(
-                        builder: (context, constraints) {
-                          final compact = constraints.maxWidth < 430;
-                          return Row(
-                            children: [
-                              Expanded(
-                                child: _BrandBadge(
-                                  colorScheme: colorScheme,
-                                  showAndroidTag: !compact,
-                                  compact: compact,
-                                ),
-                              ),
-                              IconButton(
-                                onPressed: _logout,
-                                tooltip: '登出',
-                                icon: const Icon(Icons.logout_rounded),
-                              ),
-                            ],
-                          );
-                        },
-                      ),
-                      const SizedBox(height: 10),
-                      LayoutBuilder(
-                        builder: (context, constraints) {
-                          final compact = constraints.maxWidth < 430;
-                          return Row(
-                            children: List.generate(navItems.length, (index) {
-                              final bool selected = index == currentIndex;
-                              return Expanded(
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 4,
-                                  ),
-                                  child: InkWell(
-                                    borderRadius: BorderRadius.circular(18),
-                                    onTap: () =>
-                                        setState(() => currentIndex = index),
-                                    child: AnimatedContainer(
-                                      duration:
-                                          const Duration(milliseconds: 180),
-                                      padding: EdgeInsets.symmetric(
-                                        vertical: compact ? 12 : 18,
-                                        horizontal: compact ? 4 : 16,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: selected
-                                            ? colorScheme.primary
-                                            : const Color(0xFFF1F5F9),
-                                        borderRadius: BorderRadius.circular(18),
-                                      ),
-                                      child: compact
-                                          ? Column(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                Icon(
-                                                  navItems[index]['icon']
-                                                      as IconData,
-                                                  size: selected ? 24 : 22,
-                                                  color: selected
-                                                      ? Colors.white
-                                                      : const Color(0xFF475569),
-                                                ),
-                                                const SizedBox(height: 4),
-                                                Text(
-                                                  navItems[index]['label']
-                                                      as String,
-                                                  maxLines: 1,
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                  textAlign: TextAlign.center,
-                                                  style: TextStyle(
-                                                    fontSize:
-                                                        selected ? 14 : 13,
-                                                    color: selected
-                                                        ? Colors.white
-                                                        : const Color(
-                                                            0xFF334155,
-                                                          ),
-                                                    fontWeight: FontWeight.w800,
-                                                  ),
-                                                ),
-                                              ],
-                                            )
-                                          : Row(
-                                              mainAxisAlignment:
-                                                  MainAxisAlignment.center,
-                                              children: [
-                                                Icon(
-                                                  navItems[index]['icon']
-                                                      as IconData,
-                                                  size: selected ? 26 : 24,
-                                                  color: selected
-                                                      ? Colors.white
-                                                      : const Color(0xFF475569),
-                                                ),
-                                                const SizedBox(width: 14),
-                                                Flexible(
-                                                  child: Text(
-                                                    navItems[index]['label']
-                                                        as String,
-                                                    textAlign: TextAlign.center,
-                                                    overflow:
-                                                        TextOverflow.ellipsis,
-                                                    style: TextStyle(
-                                                      fontSize:
-                                                          selected ? 18 : 17,
-                                                      color: selected
-                                                          ? Colors.white
-                                                          : const Color(
-                                                              0xFF334155,
-                                                            ),
-                                                      fontWeight:
-                                                          FontWeight.w800,
-                                                    ),
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                    ),
-                                  ),
-                                ),
-                              );
-                            }),
-                          );
-                        },
-                      ),
-                    ],
-                  ),
+                    ),
+                    IconButton(
+                      onPressed: _openSettings,
+                      tooltip: '設定',
+                      icon: const Icon(Icons.settings_rounded),
+                    ),
+                    IconButton(
+                      onPressed: _logout,
+                      tooltip: '登出',
+                      icon: const Icon(Icons.logout_rounded),
+                    ),
+                  ],
                 ),
               ),
               Expanded(child: pages[currentIndex]),
             ],
           ),
         ),
+      ),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: currentIndex,
+        onDestinationSelected: (index) => setState(() => currentIndex = index),
+        backgroundColor: Colors.white,
+        elevation: 8,
+        height: 72,
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+        destinations: [
+          for (final item in navItems)
+            NavigationDestination(
+              icon: Icon(item['icon'] as IconData),
+              selectedIcon: Icon(item['icon'] as IconData),
+              label: item['label'] as String,
+            ),
+        ],
       ),
     );
   }

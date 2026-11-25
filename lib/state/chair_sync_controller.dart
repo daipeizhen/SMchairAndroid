@@ -20,6 +20,8 @@ class ChairSyncController extends ChangeNotifier {
   bool _notificationHistoryLoaded = false;
 
   Timer? _syncTimer;
+  ChairBattery? chairBattery;
+  bool chairOnline = false;
 
   final List<Map<String, dynamic>> notifications = [];
   final List<Map<String, dynamic>> postureHistory = [];
@@ -84,6 +86,23 @@ class ChairSyncController extends ChangeNotifier {
     notifyListeners();
   }
 
+  void clearUserData() {
+    postureLabel = '';
+    postureCode = '';
+    postureScore = 0;
+    isGoodPosture = false;
+    latestAdvice = '等待後端資料同步';
+    sessionOpenedAt = null;
+    _lastPostureWasSedentary = false;
+    chairBattery = null;
+    chairOnline = false;
+    notifications.clear();
+    postureHistory.clear();
+    _knownNotificationIds.clear();
+    _notificationHistoryLoaded = false;
+    notifyListeners();
+  }
+
   void startSession() {
     sessionOpenedAt ??= DateTime.now();
     notifyListeners();
@@ -92,6 +111,8 @@ class ChairSyncController extends ChangeNotifier {
   void stopSession() {
     sessionOpenedAt = null;
     _lastPostureWasSedentary = false;
+    chairBattery = null;
+    chairOnline = false;
     notifyListeners();
   }
 
@@ -107,7 +128,6 @@ class ChairSyncController extends ChangeNotifier {
     _syncTimer = Timer.periodic(interval, (_) async {
       await _pullFromServer();
     });
-    // do an immediate pull
     _pullFromServer();
   }
 
@@ -127,13 +147,17 @@ class ChairSyncController extends ChangeNotifier {
       final notificationHistory = await ApiService.getNotificationHistory(
         limit: 50,
       );
+      final chairStatus = await ApiService.getChairStatus();
+      if (chairStatus != null) {
+        chairOnline = chairStatus['online'] == true;
+        chairBattery = ChairBattery.fromJson(chairStatus['battery']);
+      }
 
       // Map server posture entries into controller format
       if (history.isNotEmpty) {
         postureHistory.clear();
         _applyPosturePayload(history.first);
       } else {
-        final chairStatus = await ApiService.getChairStatus();
         if (chairStatus != null) {
           _applyPosturePayload(chairStatus);
         }
@@ -178,6 +202,7 @@ class ChairSyncController extends ChangeNotifier {
             ? const Color(0xFF2563EB)
             : ApiService.postureColor(displayPosture);
         notifications.add({
+          'id': notificationId,
           'title': title,
           'time': time.isNotEmpty ? time : _formatNow(),
           'message': message,

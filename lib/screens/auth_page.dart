@@ -15,7 +15,7 @@ class AuthPage extends StatefulWidget {
     required bool usernameExists,
   }) {
     if (isRegisterMode && usernameExists) {
-      return '此帳號已存在';
+      return '此使用者名稱已存在';
     }
     return '';
   }
@@ -42,11 +42,14 @@ class _AuthPageState extends State<AuthPage> {
   bool _obscureConfirmPassword = true;
   String _usernameServerError = '';
   String _passwordServerError = '';
+  String? _selectedChairId;
+  bool _isLoadingChairs = false;
 
   @override
   void initState() {
     super.initState();
     _mode = widget.initialMode;
+    _loadSavedChair();
   }
 
   @override
@@ -64,9 +67,112 @@ class _AuthPageState extends State<AuthPage> {
   }
 
   String get _title => _mode == AuthMode.login ? '登入' : '註冊';
-  String get _headline => _mode == AuthMode.login ? '歡迎回來' : '建立帳號';
+  String get _headline => _mode == AuthMode.login ? '歡迎回來' : '建立使用者名稱';
   String get _subtitle =>
       _mode == AuthMode.login ? '登入後即可查看你的智慧座椅資料' : '註冊後即可開始使用完整功能';
+
+  Future<void> _loadSavedChair() async {
+    final chairId = await ApiService.getSavedChairId();
+    if (mounted) setState(() => _selectedChairId = chairId);
+  }
+
+  Future<String?> _showChairPicker(List<Map<String, dynamic>> chairs) async {
+    var selectedId =
+        chairs.any(
+          (chair) => chair['device_id']?.toString() == _selectedChairId,
+        )
+        ? _selectedChairId
+        : chairs.first['device_id']?.toString();
+    return showDialog<String>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('選擇椅子'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: chairs.map((chair) {
+                final deviceId = chair['device_id']?.toString() ?? '';
+                final inUse = chair['username']?.toString().isNotEmpty ?? false;
+                return ListTile(
+                  onTap: deviceId.isEmpty
+                      ? null
+                      : () => setDialogState(() => selectedId = deviceId),
+                  leading: Icon(
+                    selectedId == deviceId
+                        ? Icons.radio_button_checked_rounded
+                        : Icons.radio_button_unchecked_rounded,
+                  ),
+                  title: Text(deviceId),
+                  subtitle: inUse ? const Text('使用中') : null,
+                );
+              }).toList(),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('稍後再選'),
+            ),
+            FilledButton(
+              onPressed: selectedId == null
+                  ? null
+                  : () => Navigator.pop(dialogContext, selectedId),
+              child: const Text('確認'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _chooseChair({bool promptAfterAuth = false}) async {
+    if (_isLoadingChairs) return;
+    setState(() => _isLoadingChairs = true);
+    try {
+      final chairs = await ApiService.getChairs();
+      final onlineChairs = chairs
+          .where(
+            (chair) =>
+                chair['online'] == true &&
+                (chair['device_id']?.toString().trim().isNotEmpty ?? false),
+          )
+          .toList();
+      if (!mounted) return;
+      if (onlineChairs.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              promptAfterAuth ? '目前沒有線上的椅子，可稍後到設定中選擇。' : '目前沒有線上的椅子，請確認椅子已開機。',
+            ),
+          ),
+        );
+        return;
+      }
+      final savedChairId = await ApiService.getSavedChairId();
+      if (promptAfterAuth &&
+          onlineChairs.any(
+            (chair) => chair['device_id']?.toString() == savedChairId,
+          )) {
+        if (mounted) setState(() => _selectedChairId = savedChairId);
+        return;
+      }
+      if (savedChairId != null && _selectedChairId != savedChairId) {
+        _selectedChairId = savedChairId;
+      }
+      final selectedId = await _showChairPicker(onlineChairs);
+      if (!mounted || selectedId == null) return;
+      await ApiService.saveChairId(selectedId);
+      if (mounted) setState(() => _selectedChairId = selectedId);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('取得椅子清單失敗：$error')));
+    } finally {
+      if (mounted) setState(() => _isLoadingChairs = false);
+    }
+  }
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
@@ -78,7 +184,7 @@ class _AuthPageState extends State<AuthPage> {
       if (!usernameExists) {
         if (!mounted) return;
         setState(() {
-          _usernameServerError = '無此帳戶，請去註冊';
+          _usernameServerError = '無此使用者名稱，請去註冊';
           _passwordServerError = '';
           _isSubmitting = false;
         });
@@ -119,6 +225,8 @@ class _AuthPageState extends State<AuthPage> {
     setState(() => _isSubmitting = false);
 
     if (result.success) {
+      await _chooseChair(promptAfterAuth: true);
+      if (!mounted) return;
       Navigator.of(context).pop(result.email);
     } else {
       if (_mode == AuthMode.login) {
@@ -130,7 +238,7 @@ class _AuthPageState extends State<AuthPage> {
             : _classifyLoginError(result.message);
         setState(() {
           _usernameServerError = authError == _LoginErrorKind.username
-              ? '無此帳戶，請去註冊'
+              ? '無此使用者名稱，請去註冊'
               : '';
           _passwordServerError = authError == _LoginErrorKind.password
               ? '密碼錯誤'
@@ -324,7 +432,8 @@ class _AuthPageState extends State<AuthPage> {
 
   _LoginErrorKind _classifyLoginError(String message) {
     final normalized = message.toLowerCase();
-    if (normalized.contains('無此帳戶') ||
+    if (normalized.contains('無此使用者名稱') ||
+        normalized.contains('無此帳戶') ||
         normalized.contains('無此帳號') ||
         normalized.contains('不存在') ||
         normalized.contains('not found') ||
@@ -414,7 +523,38 @@ class _AuthPageState extends State<AuthPage> {
                       ),
                       const SizedBox(height: 16),
 
-                      // 帳號（登入 & 註冊都需要）
+                      if (_mode == AuthMode.login) ...[
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF8FAFC),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: const Color(0xFFE2E8F0)),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.event_seat_rounded,
+                                color: Color(0xFF2563EB),
+                              ),
+                              const SizedBox(width: 10),
+                              const Expanded(
+                                child: Text(
+                                  '登入後選擇線上座椅以開始監測',
+                                  style: TextStyle(fontWeight: FontWeight.w700),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+
+                      // 使用者名稱（登入 & 註冊都需要）
                       TextFormField(
                         controller: _usernameController,
                         onChanged: (_) {
@@ -423,11 +563,11 @@ class _AuthPageState extends State<AuthPage> {
                           }
                         },
                         decoration: const InputDecoration(
-                          labelText: '帳號',
+                          labelText: '使用者名稱',
                           border: OutlineInputBorder(),
                         ),
                         validator: (v) =>
-                            (v ?? '').trim().isEmpty ? '請輸入帳號' : null,
+                            (v ?? '').trim().isEmpty ? '請輸入使用者名稱' : null,
                       ),
                       if (_usernameServerError.isNotEmpty) ...[
                         const SizedBox(height: 6),
@@ -560,8 +700,16 @@ class _AuthPageState extends State<AuthPage> {
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton(
-                          onPressed: _isSubmitting ? null : _submit,
-                          child: Text(_isSubmitting ? '處理中...' : _title),
+                          onPressed: _isSubmitting || _isLoadingChairs
+                              ? null
+                              : _submit,
+                          child: Text(
+                            _isSubmitting
+                                ? '處理中...'
+                                : _isLoadingChairs
+                                ? '載入椅子...'
+                                : _title,
+                          ),
                         ),
                       ),
                       const SizedBox(height: 8),
@@ -585,7 +733,9 @@ class _AuthPageState extends State<AuthPage> {
                                   _passwordServerError = '';
                                 }),
                           child: Text(
-                            _mode == AuthMode.login ? '沒有帳號？前往註冊' : '已有帳號？前往登入',
+                            _mode == AuthMode.login
+                                ? '沒有使用者名稱？前往註冊'
+                                : '已有使用者名稱？前往登入',
                           ),
                         ),
                       ),

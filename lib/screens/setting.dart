@@ -12,6 +12,7 @@ class SettingPage extends StatefulWidget {
     this.isLoggedIn = false,
     this.userEmail,
     this.onLogout,
+    this.onAccountDeleted,
     this.onProfileChanged,
     required this.wellnessController,
   });
@@ -19,6 +20,7 @@ class SettingPage extends StatefulWidget {
   final bool isLoggedIn;
   final String? userEmail;
   final Future<void> Function()? onLogout;
+  final Future<void> Function()? onAccountDeleted;
   final Future<void> Function()? onProfileChanged;
   final WellnessController wellnessController;
 
@@ -62,13 +64,19 @@ class _SettingPageState extends State<SettingPage> {
   final TextEditingController newPasswordController = TextEditingController();
   final TextEditingController confirmPasswordController =
       TextEditingController();
+  final TextEditingController deletePasswordController =
+      TextEditingController();
 
   bool _obscureCurrentPassword = true;
   bool _obscureNewPassword = true;
   bool _obscureConfirmPassword = true;
+  bool _obscureDeletePassword = true;
   int _avatarIndex = 0;
   Uint8List? _avatarBytes;
   bool _isUploadingAvatar = false;
+  bool _isDeletingAccount = false;
+  bool _isSelectingChair = false;
+  String? _savedChairId;
 
   String get _userScope {
     final email = widget.userEmail?.trim().toLowerCase();
@@ -110,6 +118,7 @@ class _SettingPageState extends State<SettingPage> {
 
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
+    final savedChairId = await ApiService.getSavedChairId();
     debugPrint('[Setting] Loading settings for scope=$_userScope');
     final savedDisplayName = prefs.getString(_key('displayName'));
     final savedAvatarIndex = prefs.getInt(_key('avatarIndex'));
@@ -169,6 +178,7 @@ class _SettingPageState extends State<SettingPage> {
       weightController.text = weightText ?? '';
       displayNameController.text = displayNameText ?? '';
       _avatarIndex = avatarIndex;
+      _savedChairId = savedChairId;
     });
     if (avatarUrl != null && avatarUrl.isNotEmpty) {
       final bytes = await ApiService.loadAvatarBytes(avatarUrl);
@@ -493,7 +503,180 @@ class _SettingPageState extends State<SettingPage> {
     currentPasswordController.dispose();
     newPasswordController.dispose();
     confirmPasswordController.dispose();
+    deletePasswordController.dispose();
     super.dispose();
+  }
+
+  Future<String?> _showChairPicker(List<Map<String, dynamic>> chairs) async {
+    var selectedId =
+        chairs.any((chair) => chair['device_id']?.toString() == _savedChairId)
+        ? _savedChairId
+        : chairs.first['device_id']?.toString();
+    return showDialog<String>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('選擇椅子'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: chairs.map((chair) {
+                final deviceId = chair['device_id']?.toString() ?? '';
+                final inUse = chair['username']?.toString().isNotEmpty ?? false;
+                return ListTile(
+                  onTap: deviceId.isEmpty
+                      ? null
+                      : () => setDialogState(() => selectedId = deviceId),
+                  leading: Icon(
+                    selectedId == deviceId
+                        ? Icons.radio_button_checked_rounded
+                        : Icons.radio_button_unchecked_rounded,
+                  ),
+                  title: Text(deviceId),
+                  subtitle: inUse ? const Text('使用中') : null,
+                );
+              }).toList(),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: selectedId == null
+                  ? null
+                  : () => Navigator.pop(dialogContext, selectedId),
+              child: const Text('確認'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _changeChair() async {
+    if (_isSelectingChair) return;
+    setState(() => _isSelectingChair = true);
+    try {
+      final chairs = await ApiService.getChairs();
+      final onlineChairs = chairs
+          .where(
+            (chair) =>
+                chair['online'] == true &&
+                (chair['device_id']?.toString().trim().isNotEmpty ?? false),
+          )
+          .toList();
+      if (!mounted) return;
+      if (onlineChairs.isEmpty) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('目前沒有線上的椅子，請確認椅子已開機。')));
+        return;
+      }
+      final selectedId = await _showChairPicker(onlineChairs);
+      if (!mounted || selectedId == null) return;
+      await ApiService.saveChairId(selectedId);
+      if (!mounted) return;
+      setState(() => _savedChairId = selectedId);
+      final checkin = await ApiService.chairCheckin(deviceId: selectedId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            checkin.success
+                ? '已更換椅子並入座：$selectedId'
+                : '已儲存椅子，但入座失敗：${checkin.message}',
+          ),
+        ),
+      );
+      await widget.onProfileChanged?.call();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('取得椅子清單失敗：$error')));
+    } finally {
+      if (mounted) setState(() => _isSelectingChair = false);
+    }
+  }
+
+  Future<void> _deleteAccount() async {
+    deletePasswordController.clear();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('刪除帳號'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                '刪除後無法復原，坐姿紀錄、通知與花園進度都會刪除。',
+                style: TextStyle(color: Color(0xFFB91C1C), height: 1.45),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: deletePasswordController,
+                obscureText: _obscureDeletePassword,
+                decoration: InputDecoration(
+                  labelText: '請輸入密碼',
+                  suffixIcon: IconButton(
+                    onPressed: () => setDialogState(
+                      () => _obscureDeletePassword = !_obscureDeletePassword,
+                    ),
+                    icon: Icon(
+                      _obscureDeletePassword
+                          ? Icons.visibility_off
+                          : Icons.visibility,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: _isDeletingAccount
+                  ? null
+                  : () => Navigator.pop(dialogContext, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFDC2626),
+              ),
+              onPressed: _isDeletingAccount
+                  ? null
+                  : () => Navigator.pop(dialogContext, true),
+              child: const Text('確認刪除'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    if (deletePasswordController.text.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('請輸入密碼')));
+      return;
+    }
+
+    setState(() => _isDeletingAccount = true);
+    final error = await ApiService.deleteAccount(deletePasswordController.text);
+    if (!mounted) return;
+    setState(() => _isDeletingAccount = false);
+    if (error != null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error)));
+      return;
+    }
+    deletePasswordController.clear();
+    await widget.onAccountDeleted?.call();
   }
 
   Widget buildTextField({
@@ -816,6 +999,51 @@ class _SettingPageState extends State<SettingPage> {
 
           const SizedBox(height: 16),
           _sectionPanel(
+            title: '座椅設定',
+            icon: Icons.event_seat_rounded,
+            accent: const Color(0xFF2563EB),
+            children: [
+              Row(
+                children: [
+                  const Icon(
+                    Icons.event_seat_rounded,
+                    color: Color(0xFF2563EB),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      _savedChairId == null ? '尚未選擇椅子' : '目前椅子：$_savedChairId',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: widget.isLoggedIn && !_isSelectingChair
+                        ? _changeChair
+                        : null,
+                    icon: _isSelectingChair
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.swap_horiz_rounded),
+                    label: Text(_savedChairId == null ? '選擇椅子' : '更換椅子'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                '只會列出目前線上的椅子。選擇後，後續監測和同步會使用此椅子。',
+                style: TextStyle(color: Color(0xFF64748B)),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 16),
+          _sectionPanel(
             title: '修改密碼',
             icon: Icons.lock_rounded,
             accent: const Color(0xFFEA580C),
@@ -883,6 +1111,29 @@ class _SettingPageState extends State<SettingPage> {
             ),
           ),
           if (widget.isLoggedIn) ...[
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _isDeletingAccount ? null : _deleteAccount,
+                icon: _isDeletingAccount
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.delete_forever_rounded),
+                label: const Text('刪除帳號', style: TextStyle(fontSize: 16)),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFFB91C1C),
+                  side: const BorderSide(color: Color(0xFFFCA5A5)),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ),
             const SizedBox(height: 12),
             SizedBox(
               width: double.infinity,

@@ -85,6 +85,18 @@ class _SmartChairAppState extends State<SmartChairApp> {
             borderRadius: BorderRadius.circular(18),
           ),
         ),
+        navigationBarTheme: NavigationBarThemeData(
+          backgroundColor: Colors.white,
+          indicatorColor: const Color(0xFFD8F3F7),
+          labelTextStyle: WidgetStatePropertyAll(
+            TextStyle(
+              fontFamily: _appFont,
+              fontFamilyFallback: _fontFallback,
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
         snackBarTheme: SnackBarThemeData(
           behavior: SnackBarBehavior.floating,
           backgroundColor: const Color(0xFF0F172A),

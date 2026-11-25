@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../models/wellness_models.dart';
@@ -29,6 +31,9 @@ class _HealthGardenPageState extends State<HealthGardenPage>
       duration: const Duration(seconds: 4),
     )..repeat(reverse: true);
     widget.controller.addListener(_refresh);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(widget.controller.refreshHistory());
+    });
   }
 
   @override
@@ -117,9 +122,103 @@ class _HealthGardenPageState extends State<HealthGardenPage>
             ),
             const SizedBox(height: 10),
             ...controller.tasks.map(_taskCard),
+            const SizedBox(height: 8),
+            const Text(
+              '完成紀錄',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 10),
+            _historyCard(controller),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _historyCard(WellnessController controller) {
+    final records = controller.records.take(8).toList();
+    if (records.isEmpty) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFE2E8F0)),
+        ),
+        child: const Text(
+          '尚未有完成紀錄，完成今日任務後會顯示在這裡。',
+          style: TextStyle(color: Color(0xFF64748B)),
+        ),
+      );
+    }
+
+    return Column(
+      children: records.map((record) {
+        final completedAt = record.completedAt.toLocal();
+        final date =
+            '${completedAt.month}/${completedAt.day} '
+            '${completedAt.hour.toString().padLeft(2, '0')}:'
+            '${completedAt.minute.toString().padLeft(2, '0')}';
+        return Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFFE2E8F0)),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.check_circle_rounded, color: Color(0xFF16A34A)),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      controller.taskTitleForRecord(record.taskId),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w900,
+                        color: Color(0xFF0F172A),
+                      ),
+                    ),
+                    if (record.feedback.isNotEmpty)
+                      Text(
+                        record.feedback,
+                        style: const TextStyle(
+                          color: Color(0xFF64748B),
+                          fontSize: 12,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  if (record.points > 0)
+                    Text(
+                      '+${record.points} 能量',
+                      style: const TextStyle(
+                        color: Color(0xFF16A34A),
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  Text(
+                    date,
+                    style: const TextStyle(
+                      color: Color(0xFF94A3B8),
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      }).toList(),
     );
   }
 

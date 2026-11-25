@@ -31,6 +31,7 @@ class DashboardPage extends StatefulWidget {
 class _DashboardPageState extends State<DashboardPage> {
   bool _isLoading = false;
   bool _isCalibrating = false;
+  final Set<String> _promptedAutoCheckoutIds = {};
   late final VoidCallback _controllerListener;
   Timer? _pageTimer;
   final ScrollController _scrollController = ScrollController();
@@ -100,11 +101,28 @@ class _DashboardPageState extends State<DashboardPage> {
     if (!widget.isLoggedIn) return;
 
     try {
-      final checkin = await ApiService.chairCheckin();
+      final chairId = await ApiService.getSavedChairId();
+      if (chairId == null || chairId.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('請先到設定選擇椅子，再開始坐姿監測。')));
+        }
+        return;
+      }
+      final checkin = await ApiService.chairCheckin(deviceId: chairId);
+      if (!mounted || !checkin.success) {
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(checkin.message)));
+        }
+        return;
+      }
       widget.controller.startSession();
       widget.controller.startAutoSync();
       await _fetch();
-      if (!mounted || !checkin.success || checkin.calibrated) return;
+      if (!mounted || checkin.calibrated) return;
       final shouldCalibrate = await showDialog<bool>(
         context: context,
         builder: (dialogContext) => AlertDialog(
@@ -146,6 +164,56 @@ class _DashboardPageState extends State<DashboardPage> {
           ? ApiService.postureColor(widget.controller.postureCode)
           : const Color(0xFF64748B);
     });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      for (final item in widget.controller.notifications.reversed) {
+        if (item['kind']?.toString() != 'auto_checkout') continue;
+        final id = item['id']?.toString();
+        if (id == null || id.isEmpty) continue;
+        if (_promptedAutoCheckoutIds.add(id)) {
+          _promptRecheckIn();
+          break;
+        }
+      }
+    });
+  }
+
+  Future<void> _promptRecheckIn() async {
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    final shouldCheckin = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('椅子已自動離座'),
+        content: const Text('要重新入座並繼續監測嗎？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('稍後'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('重新入座'),
+          ),
+        ],
+      ),
+    );
+    if (shouldCheckin != true || !mounted) return;
+    final chairId = await ApiService.getSavedChairId();
+    if (!mounted) return;
+    if (chairId == null || chairId.isEmpty) {
+      messenger.showSnackBar(const SnackBar(content: Text('請先到設定選擇椅子。')));
+      return;
+    }
+    final result = await ApiService.chairCheckin(deviceId: chairId);
+    if (!mounted) return;
+    messenger.showSnackBar(
+      SnackBar(content: Text(result.success ? '已重新入座' : result.message)),
+    );
+    if (result.success) {
+      widget.controller.startSession();
+      await widget.controller.refreshFromServer();
+    }
   }
 
   Future<void> _fetch() async {
@@ -172,7 +240,12 @@ class _DashboardPageState extends State<DashboardPage> {
     setState(() => _isCalibrating = true);
 
     try {
-      await ApiService.chairCheckin();
+      final chairId = await ApiService.getSavedChairId();
+      if (chairId == null || chairId.isEmpty) {
+        throw StateError('請先到設定選擇椅子。');
+      }
+      final checkin = await ApiService.chairCheckin(deviceId: chairId);
+      if (!checkin.success) throw StateError(checkin.message);
       final result = await ApiService.calibrateChairAuto();
 
       if (!mounted) return;
@@ -186,10 +259,16 @@ class _DashboardPageState extends State<DashboardPage> {
       } else {
         messenger.showSnackBar(SnackBar(content: Text(result.message)));
       }
-    } catch (_) {
+    } catch (error) {
       if (!mounted) return;
       messenger.showSnackBar(
-        const SnackBar(content: Text('校準失敗，請檢查連線與感測器資料。')),
+        SnackBar(
+          content: Text(
+            error is StateError
+                ? error.message.toString()
+                : '校準失敗，請檢查連線與感測器資料。',
+          ),
+        ),
       );
     } finally {
       if (mounted) {
@@ -369,30 +448,55 @@ class _DashboardPageState extends State<DashboardPage> {
 
           const SizedBox(height: 14),
 
-          // 資訊卡片列（同一橫排顯示三張卡）
-          Row(
-            children: [
-              _InfoCard(
-                title: '姿勢評分',
-                value: hasData ? '$_score 分' : '尚無資料',
-                icon: Icons.speed_rounded,
-                accent: _color,
-              ),
-              const SizedBox(width: 10),
-              _InfoCard(
-                title: '風險等級',
-                value: _risk,
-                icon: Icons.warning_amber_rounded,
-                accent: _color,
-              ),
-              const SizedBox(width: 10),
-              _InfoCard(
-                title: '今日提醒',
-                value: '$_todayReminderCount 次',
-                icon: Icons.notifications_active_rounded,
-                accent: const Color(0xFF7C3AED),
-              ),
-            ],
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final battery = widget.controller.chairBattery;
+              final chairOnline = widget.controller.chairOnline;
+              final batteryColor = !chairOnline
+                  ? const Color(0xFF94A3B8)
+                  : (battery?.isLow ?? false)
+                  ? const Color(0xFFDC2626)
+                  : const Color(0xFF16A34A);
+              final cards = [
+                _InfoCard(
+                  title: '姿勢評分',
+                  value: hasData ? '$_score 分' : '尚無資料',
+                  icon: Icons.speed_rounded,
+                  accent: _color,
+                ),
+                _InfoCard(
+                  title: '風險等級',
+                  value: _risk,
+                  icon: Icons.warning_amber_rounded,
+                  accent: _color,
+                ),
+                _InfoCard(
+                  title: '今日提醒',
+                  value: '$_todayReminderCount 次',
+                  icon: Icons.notifications_active_rounded,
+                  accent: const Color(0xFF7C3AED),
+                ),
+                _InfoCard(
+                  title: '椅子電量',
+                  value:
+                      battery?.label(online: chairOnline) ??
+                      (chairOnline ? '電量未知' : '離線'),
+                  icon: Icons.battery_std_rounded,
+                  accent: batteryColor,
+                  valueColor: batteryColor,
+                ),
+              ];
+              final columns = constraints.maxWidth >= 560 ? 4 : 2;
+              final cardWidth =
+                  (constraints.maxWidth - (columns - 1) * 10) / columns;
+              return Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: cards
+                    .map((card) => SizedBox(width: cardWidth, child: card))
+                    .toList(),
+              );
+            },
           ),
 
           const SizedBox(height: 16),
@@ -412,38 +516,50 @@ class _DashboardPageState extends State<DashboardPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const SizedBox(height: 10),
-
-                const SizedBox(height: 8),
-
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: _isLoading ? null : _fetch,
-                    icon: _isLoading
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.refresh),
-                    label: Text(_isLoading ? '取得中...' : '手動更新資料'),
+                const Text(
+                  '資料操作',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                    color: Color(0xFF0F172A),
                   ),
                 ),
-                const SizedBox(height: 10),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: _isCalibrating ? null : _calibrateAuto,
-                    icon: _isCalibrating
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.tune_rounded),
-                    label: Text(_isCalibrating ? '校準中...' : '自動校準'),
-                  ),
+                const SizedBox(height: 8),
+
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _isLoading ? null : _fetch,
+                        icon: _isLoading
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.refresh),
+                        label: Text(_isLoading ? '取得中...' : '更新資料'),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: _isCalibrating ? null : _calibrateAuto,
+                        icon: _isCalibrating
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.tune_rounded),
+                        label: Text(_isCalibrating ? '校準中...' : '自動校準'),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -476,7 +592,7 @@ class _DashboardPageState extends State<DashboardPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            '今日坐姿分布',
+            '最近姿勢紀錄分布',
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w900,
@@ -890,62 +1006,62 @@ class _InfoCard extends StatelessWidget {
     required this.value,
     required this.icon,
     required this.accent,
+    this.valueColor,
   });
 
   final String title;
   final String value;
   final IconData icon;
   final Color accent;
+  final Color? valueColor;
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 32,
-                  height: 32,
-                  decoration: BoxDecoration(
-                    color: accent.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Icon(icon, size: 18, color: accent),
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      color: Color(0xFF64748B),
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Text(
-              value,
-              style: const TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w800,
-                color: Color(0xFF0F172A),
+                child: Icon(icon, size: 18, color: accent),
               ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    color: Color(0xFF64748B),
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+              color: valueColor ?? const Color(0xFF0F172A),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

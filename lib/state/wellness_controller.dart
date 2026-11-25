@@ -72,7 +72,7 @@ class WellnessController extends ChangeNotifier {
     final selected = <WellnessTask>[];
     for (final task in source) {
       if (!_conflictsWithAiAdvice(task)) selected.add(task);
-      if (selected.length == 3) return List.unmodifiable(selected);
+      if (selected.length == 6) return List.unmodifiable(selected);
     }
 
     for (final task in _baseTasks) {
@@ -80,7 +80,7 @@ class WellnessController extends ChangeNotifier {
           !selected.any((item) => item.id == task.id)) {
         selected.add(task);
       }
-      if (selected.length == 3) break;
+      if (selected.length == 6) break;
     }
     return List.unmodifiable(selected);
   }
@@ -99,6 +99,13 @@ class WellnessController extends ChangeNotifier {
       (task) => task.postureCode == postureCode,
       orElse: () => _baseTasks.last,
     );
+  }
+
+  String taskTitleForRecord(String taskId) {
+    for (final task in [..._dailyTasks, ..._baseTasks]) {
+      if (task.id == taskId) return task.title;
+    }
+    return '伸展任務';
   }
 
   void setAiAdviceTasks(List<Map<String, dynamic>> exercises) {
@@ -142,6 +149,13 @@ class WellnessController extends ChangeNotifier {
   Future<void> initialize(String? userScope) async {
     final nextScope = userScope?.trim().toLowerCase();
     _scope = nextScope == null || nextScope.isEmpty ? 'guest' : nextScope;
+    points = 0;
+    streak = 0;
+    activeTaskId = null;
+    latestFeedback = null;
+    records.clear();
+    _dailyTasks = const [];
+    _aiAdviceTaskKeys.clear();
     notifyListeners();
 
     final prefs = await SharedPreferences.getInstance();
@@ -156,14 +170,43 @@ class WellnessController extends ChangeNotifier {
       ..clear()
       ..addAll(_decodeRecords(prefs.getString(_key('records'))));
     _recalculateStreak();
+    notifyListeners();
     await _loadDailyTasks();
     await _loadWellnessHistory();
+    final garden = await ApiService.getWellnessGarden();
+    if (garden != null) _applyGarden(garden);
+    await _persist();
     notifyListeners();
   }
 
   Future<void> refreshDailyTasks() async {
     await _loadDailyTasks(force: true);
     notifyListeners();
+  }
+
+  Future<void> refreshHistory() async {
+    final prefs = await SharedPreferences.getInstance();
+    records
+      ..clear()
+      ..addAll(_decodeRecords(prefs.getString(_key('records'))));
+    await _loadWellnessHistory();
+    final garden = await ApiService.getWellnessGarden();
+    if (garden != null) _applyGarden(garden);
+    _recalculateStreak();
+    await _persist();
+    notifyListeners();
+  }
+
+  Future<void> refreshGarden() async {
+    final garden = await ApiService.getWellnessGarden();
+    if (garden != null) _applyGarden(garden);
+    await _persist();
+    notifyListeners();
+  }
+
+  void _applyGarden(Map<String, dynamic> garden) {
+    points = (garden['points'] as num?)?.toInt() ?? points;
+    streak = (garden['streak'] as num?)?.toInt() ?? streak;
   }
 
   Future<void> _loadDailyTasks({bool force = false}) async {
@@ -178,7 +221,7 @@ class WellnessController extends ChangeNotifier {
             _dailyTasks = decoded
                 .whereType<Map>()
                 .map((item) => _taskFromExercise(item.cast<String, dynamic>()))
-                .take(3)
+                .take(6)
                 .toList();
             if (_dailyTasks.isNotEmpty) return;
           }
@@ -190,13 +233,13 @@ class WellnessController extends ChangeNotifier {
 
     final exercises = await ApiService.getStretchPlan();
     if (exercises.isEmpty) {
-      _dailyTasks = _baseTasks.take(3).toList();
+      _dailyTasks = _baseTasks.take(6).toList();
       return;
     }
 
-    _dailyTasks = exercises.take(3).map(_taskFromExercise).toList();
+    _dailyTasks = exercises.take(6).map(_taskFromExercise).toList();
     await prefs.setString(_key('dailyTasksDate'), today);
-    await prefs.setString(_key('dailyTasks'), jsonEncode(exercises.take(3)));
+    await prefs.setString(_key('dailyTasks'), jsonEncode(exercises.take(6)));
   }
 
   WellnessTask _taskFromExercise(Map<String, dynamic> exercise) {
@@ -261,13 +304,14 @@ class WellnessController extends ChangeNotifier {
 
   Future<bool> completeTask(WellnessTask task, {String feedback = '完成'}) async {
     if (isCompletedToday(task.id)) return false;
+    Map<String, dynamic>? garden;
     if (task.exerciseId != null) {
-      final synced = await ApiService.completeWellnessTask(
+      garden = await ApiService.completeWellnessTask(
         exerciseId: task.exerciseId!,
         source: 'daily',
         feedback: feedback,
       );
-      if (!synced) return false;
+      if (garden == null) return false;
     }
 
     final today = _dateKey(DateTime.now());
@@ -283,10 +327,14 @@ class WellnessController extends ChangeNotifier {
         points: earnedPoints,
       ),
     );
-    points += earnedPoints;
+    if (garden != null && garden.isNotEmpty) {
+      _applyGarden(garden);
+    } else if (task.exerciseId == null) {
+      points += earnedPoints;
+    }
     activeTaskId = null;
     latestFeedback = feedback;
-    _recalculateStreak();
+    if (task.exerciseId == null) _recalculateStreak();
     await _persist();
     notifyListeners();
     return true;

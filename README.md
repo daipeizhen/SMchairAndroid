@@ -4,20 +4,20 @@
 
 ## 目前功能
 
-- **儀表板**：即時姿勢、分數、風險、就座時間、提醒次數與健康花園進度。
+- **儀表板**：即時姿勢、分數、風險、椅子電量、就座時間、提醒次數與健康花園進度，並顯示最近姿勢紀錄分布。
 - **AI 物理治療師**：呼叫 `/api/agent` 取得文字建議與 `recommended_exercises`，分開呈現兩種資料。
 - **推薦伸展影片**：最多顯示 3 張影片卡片，可直接開啟 YouTube。
-- **健康養成花園**：接受建議、完成每日任務、回報身體感受、累積能量與連續天數。
-- **歷史報表**：已整合在「健康總覽」，顯示姿勢分布、平均分數、提醒次數、有效健康介入與最近紀錄。
+- **座椅設定**：登入後選擇線上座椅；可在設定中更換座椅並重新入座。
+- **健康養成花園**：接受建議、完成每日任務、回報身體感受，並同步能量、連續天數與完成紀錄。
+- **設定**：從右上角齒輪開啟帳號、個人資料、頭像、座椅選擇、健康介入進度與帳號刪除。
 - **通知**：姿勢提醒紀錄與當日健康介入數。
-- **設定**：帳號、個人資料、頭像與健康介入進度。
 
 ## 技術堆疊
 
 - Flutter / Dart SDK `^3.11.1`
 - `http`：REST API 呼叫
 - `shared_preferences`：登入狀態、個人設定與健康花園本地持久化
-- `fl_chart`：姿勢報表圖表
+- `fl_chart`：最近姿勢紀錄圖表
 - `url_launcher`：開啟 YouTube 推薦影片
 
 ## 開發環境
@@ -59,10 +59,14 @@ flutter build apk --debug --dart-define=API_BASE_URL=https://sandbar-badass-subf
 - `/api/login`
 - `/api/users/exists`
 - `/api/me`
-- `/api/posture/history`
+- `/api/me/delete`
+- `/api/chairs`
 - `/api/chair/status`
+- `/api/posture/history`
 - `/api/notification/history`
 - `/api/agent`
+- `/api/wellness/garden`
+- `/api/wellness/complete`
 
 `POST /api/agent` 的成功回應可包含：
 
@@ -123,7 +127,7 @@ test/
 	-> 接受伸展建議
 	-> WellnessController
 	-> 完成任務與身體回饋
-	-> 健康花園、報表、通知與設定
+	-> 健康花園、通知與設定
 ```
 
 ## 品質檢查
@@ -133,7 +137,7 @@ flutter analyze
 flutter test
 ```
 
-健康花園目前以 `SharedPreferences` 保存本地資料；若要進行跨裝置研究或正式上線，應再將介入接受、完成時間、姿勢前後分數與主觀回饋同步到後端。研究定位、資料欄位與比較實驗指標請參考 [AI_HEALTH_INTERVENTION_RESEARCH.md](AI_HEALTH_INTERVENTION_RESEARCH.md)。
+健康花園會從後端同步積分、連續天數與完成歷史，並以 `SharedPreferences` 快取每日任務和本機紀錄。若要進行跨裝置研究或正式上線，仍應確認後端完整保存介入接受時間、姿勢前後分數與主觀回饋。研究定位、資料欄位與比較實驗指標請參考 [AI_HEALTH_INTERVENTION_RESEARCH.md](AI_HEALTH_INTERVENTION_RESEARCH.md)。
 
 ## 授權
 

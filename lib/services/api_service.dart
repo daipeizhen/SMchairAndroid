@@ -5,6 +5,38 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+class ChairBattery {
+  const ChairBattery({
+    this.present,
+    this.percent,
+    this.voltage,
+    this.updatedAt,
+  });
+
+  final bool? present;
+  final int? percent;
+  final double? voltage;
+  final DateTime? updatedAt;
+
+  static ChairBattery? fromJson(dynamic value) {
+    if (value is! Map) return null;
+    return ChairBattery(
+      present: value['present'] as bool?,
+      percent: (value['percent'] as num?)?.toInt(),
+      voltage: (value['voltage'] as num?)?.toDouble(),
+      updatedAt: DateTime.tryParse(value['updated_at']?.toString() ?? ''),
+    );
+  }
+
+  String label({required bool online}) {
+    if (present == false) return '未偵測到電池';
+    if (percent == null) return '電量未知';
+    return online ? '$percent%' : '$percent%（離線前）';
+  }
+
+  bool get isLow => present == true && (percent ?? 100) <= 20;
+}
+
 class ApiService {
   static const Duration _aiAdviceTimeout = Duration(seconds: 90);
 
@@ -123,6 +155,16 @@ class ApiService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('auth_token');
     await prefs.remove('user_email');
+  }
+
+  static Future<String?> getSavedChairId() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('last_chair_device_id');
+  }
+
+  static Future<void> saveChairId(String deviceId) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('last_chair_device_id', deviceId);
   }
 
   static Future<Map<String, String>> _headers({bool auth = false}) async {
@@ -278,7 +320,6 @@ class ApiService {
         }
         final email = (data['user']?['email'] as String?) ?? username;
         await _saveAuth(token, email);
-        unawaited(chairCheckin());
         return (success: true, message: '登入成功', email: email, errorCode: null);
       }
       final errorCode =
@@ -366,7 +407,6 @@ class ApiService {
           );
         }
         await _saveAuth(token, email);
-        unawaited(chairCheckin());
         return (success: true, message: '註冊成功', email: email, errorCode: null);
       }
       final errorCode =
@@ -629,14 +669,14 @@ class ApiService {
       return value
           .whereType<Map>()
           .map((item) => item.cast<String, dynamic>())
-          .take(3)
+          .take(6)
           .toList();
     } catch (_) {
       return [];
     }
   }
 
-  static Future<bool> completeWellnessTask({
+  static Future<Map<String, dynamic>?> completeWellnessTask({
     required int exerciseId,
     required String source,
     String feedback = '',
@@ -653,9 +693,32 @@ class ApiService {
             }),
           )
           .timeout(const Duration(seconds: 10));
-      return response.statusCode == 200 || response.statusCode == 201;
+      if (response.statusCode != 200 && response.statusCode != 201) {
+        return null;
+      }
+      final decoded = jsonDecode(response.body);
+      final garden = decoded is Map ? decoded['garden'] : null;
+      return garden is Map
+          ? garden.cast<String, dynamic>()
+          : <String, dynamic>{};
     } catch (_) {
-      return false;
+      return null;
+    }
+  }
+
+  static Future<Map<String, dynamic>?> getWellnessGarden() async {
+    try {
+      final response = await http
+          .get(
+            _buildApiUri('wellness/garden'),
+            headers: await _headers(auth: true),
+          )
+          .timeout(const Duration(seconds: 10));
+      if (response.statusCode != 200) return null;
+      final decoded = jsonDecode(response.body);
+      return decoded is Map ? decoded.cast<String, dynamic>() : null;
+    } catch (_) {
+      return null;
     }
   }
 
@@ -737,6 +800,41 @@ class ApiService {
       return res.statusCode == 200;
     } catch (_) {
       return false;
+    }
+  }
+
+  static Future<String?> deleteAccount(String password) async {
+    try {
+      final response = await http
+          .post(
+            _buildApiUri('me/delete'),
+            headers: await _headers(auth: true),
+            body: jsonEncode({'password': password}),
+          )
+          .timeout(const Duration(seconds: 10));
+      if (response.statusCode == 204) {
+        final prefs = await SharedPreferences.getInstance();
+        final email = prefs.getString('user_email')?.toLowerCase();
+        await prefs.remove('auth_token');
+        await prefs.remove('user_email');
+        await prefs.remove('last_chair_device_id');
+        if (email != null && email.isNotEmpty) {
+          for (final key in prefs.getKeys()) {
+            if (key.startsWith('settings_${email}_') ||
+                key.startsWith('wellness_${email}_')) {
+              await prefs.remove(key);
+            }
+          }
+        }
+        return null;
+      }
+      if (response.statusCode == 401) return '密碼錯誤';
+      final data = _decodeJsonMap(response.body);
+      return _extractMessage(data, '刪除失敗，請稍後再試');
+    } on TimeoutException {
+      return '刪除逾時，請稍後再試';
+    } catch (_) {
+      return '無法連線，請稍後再試';
     }
   }
 
@@ -967,17 +1065,42 @@ class ApiService {
   }
 
   // ── 座椅佔用 ──────────────────────────────────────────────────────────────
+  static Future<List<Map<String, dynamic>>> getChairs() async {
+    final response = await http
+        .get(_buildApiUri('chairs'), headers: await _headers(auth: true))
+        .timeout(const Duration(seconds: 10));
+    if (response.statusCode != 200) {
+      final data = _decodeJsonMap(response.body);
+      throw Exception(_extractMessage(data, '無法取得椅子清單：${response.statusCode}'));
+    }
+    final decoded = jsonDecode(response.body);
+    final value = decoded is Map
+        ? decoded['chairs'] ?? decoded['results']
+        : decoded;
+    if (value is! List) return [];
+    return value
+        .whereType<Map>()
+        .map((item) => item.cast<String, dynamic>())
+        .toList();
+  }
+
   static Future<({bool success, bool calibrated, String message})>
-  chairCheckin() async {
+  chairCheckin({String? deviceId}) async {
     try {
+      final selectedDeviceId = deviceId ?? await getSavedChairId();
+      if (selectedDeviceId == null || selectedDeviceId.isEmpty) {
+        return (success: false, calibrated: false, message: '請先選擇椅子');
+      }
       final res = await http
           .post(
             _buildApiUri('chair/checkin'),
             headers: await _headers(auth: true),
+            body: jsonEncode({'device_id': selectedDeviceId}),
           )
           .timeout(const Duration(seconds: 5));
       final data = _decodeJsonMap(res.body);
       if (res.statusCode >= 200 && res.statusCode < 300) {
+        await saveChairId(selectedDeviceId);
         return (
           success: true,
           calibrated: data?['calibrated'] == true,
@@ -1078,11 +1201,20 @@ class ApiService {
     } catch (_) {}
   }
 
-  static Future<Map<String, dynamic>?> getChairStatus() async {
+  static Future<Map<String, dynamic>?> getChairStatus({
+    String? deviceId,
+  }) async {
     try {
+      final selectedDeviceId = deviceId ?? await getSavedChairId();
       final res = await http
           .get(
-            _buildApiUri('chair/status'),
+            _buildApiUri(
+              'chair/status',
+              queryParameters:
+                  selectedDeviceId != null && selectedDeviceId.isNotEmpty
+                  ? {'device_id': selectedDeviceId}
+                  : null,
+            ),
             headers: await _headers(auth: true),
           )
           .timeout(const Duration(seconds: 5));
