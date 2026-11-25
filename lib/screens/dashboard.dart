@@ -6,6 +6,7 @@ import '../state/chair_sync_controller.dart';
 import '../services/api_service.dart';
 import '../state/wellness_controller.dart';
 
+/// 顯示座椅即時狀態、姿勢數據與應用程式功能捷徑。
 class DashboardPage extends StatefulWidget {
   const DashboardPage({
     super.key,
@@ -28,6 +29,7 @@ class DashboardPage extends StatefulWidget {
   State<DashboardPage> createState() => _DashboardPageState();
 }
 
+/// 管理座椅入座、資料同步、校準與總覽頁狀態。
 class _DashboardPageState extends State<DashboardPage> {
   bool _isLoading = false;
   bool _isCalibrating = false;
@@ -42,8 +44,10 @@ class _DashboardPageState extends State<DashboardPage> {
   String _risk = '尚無資料';
   Color _color = const Color(0xFF64748B);
 
+  /// 計算共用座椅控制器目前載入的提醒數量。
   int get _todayReminderCount => widget.controller.notifications.length;
 
+  /// 將座椅使用時長格式化為精簡的時、分、秒文字。
   String get _pageElapsedText {
     final sessionOpenedAt = widget.controller.sessionOpenedAt;
     if (sessionOpenedAt == null) return '0秒';
@@ -61,6 +65,7 @@ class _DashboardPageState extends State<DashboardPage> {
     return '$seconds秒';
   }
 
+  /// 註冊控制器監聽器、啟動使用時長計時並入座。
   @override
   void initState() {
     super.initState();
@@ -76,6 +81,7 @@ class _DashboardPageState extends State<DashboardPage> {
     _enterPage();
   }
 
+  /// 控制器或登入狀態變更時，重新綁定監聽器並更新姿勢資料。
   @override
   void didUpdateWidget(DashboardPage old) {
     super.didUpdateWidget(old);
@@ -88,6 +94,7 @@ class _DashboardPageState extends State<DashboardPage> {
     if (old.isLoggedIn != widget.isLoggedIn) _fetch();
   }
 
+  /// 取消頁面計時器、釋放捲動控制器並移除控制器訂閱。
   @override
   void dispose() {
     _pageTimer?.cancel();
@@ -97,6 +104,7 @@ class _DashboardPageState extends State<DashboardPage> {
     super.dispose();
   }
 
+  /// 入座已儲存的座椅並開始同步；必要時提供校準操作。
   Future<void> _enterPage() async {
     if (!widget.isLoggedIn) return;
 
@@ -149,6 +157,7 @@ class _DashboardPageState extends State<DashboardPage> {
     }
   }
 
+  /// 將控制器狀態同步至總覽，並對新的自動離座狀態僅提示一次。
   void _syncFromController() {
     setState(() {
       _postureDisplay = widget.controller.postureLabel.isNotEmpty
@@ -178,6 +187,7 @@ class _DashboardPageState extends State<DashboardPage> {
     });
   }
 
+  /// 後端回報自動離座後，詢問是否要再次入座。
   Future<void> _promptRecheckIn() async {
     if (!mounted) return;
     final messenger = ScaffoldMessenger.of(context);
@@ -216,6 +226,7 @@ class _DashboardPageState extends State<DashboardPage> {
     }
   }
 
+  /// 更新後端狀態，並回報是否取得姿勢資料。
   Future<void> _fetch() async {
     if (_isLoading) return;
     setState(() => _isLoading = true);
@@ -233,6 +244,7 @@ class _DashboardPageState extends State<DashboardPage> {
     if (mounted) setState(() => _isLoading = false);
   }
 
+  /// 校準前先入座，再顯示校準結果並更新姿勢資料。
   Future<void> _calibrateAuto() async {
     if (_isCalibrating) return;
 
@@ -277,6 +289,7 @@ class _DashboardPageState extends State<DashboardPage> {
     }
   }
 
+  /// 顯示即時姿勢數據、近期歷史紀錄與座椅操作。
   @override
   Widget build(BuildContext context) {
     final hasData = _postureCode.isNotEmpty;
@@ -569,6 +582,7 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
+  /// 彙整總覽畫面顯示的近期姿勢紀錄。
   Widget _buildReportSnapshot() {
     final history = widget.controller.postureHistory;
     final total = history.length;
@@ -606,6 +620,7 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
+  /// 建立姿勢分布圖表與可調整版面的圖例。
   Widget _buildPosturePieChart(
     Map<String, int> postureCounts,
     Map<String, String> postureLabels,
@@ -754,10 +769,12 @@ class _DashboardPageState extends State<DashboardPage> {
     }
   }
 
+  /// 依目前姿勢分數提供簡短的狀態文字。
   String _postureStatus(String code) {
     return code == 'normal' ? '正常' : '需要调整';
   }
 
+  /// 建立健康功能捷徑與個人資料摘要卡片。
   // ignore: unused_element
   Widget _buildHealthOverview() {
     final advice = widget.controller.latestAdvice.trim();
@@ -833,6 +850,7 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
+  /// 建立近期歷史清單，顯示姿勢分數、狀態與時間。
   // ignore: unused_element
   Widget _buildHistoryReport() {
     final history = widget.controller.postureHistory.reversed.take(12).toList();
@@ -914,6 +932,7 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
+  /// 使用共用卡片樣式呈現報表標題與內容。
   Widget _reportSection({required String title, required Widget child}) {
     return Container(
       width: double.infinity,
@@ -946,6 +965,7 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 }
 
+/// 在總覽區域顯示可點選的摘要卡片。
 class _OverviewTile extends StatelessWidget {
   const _OverviewTile({
     required this.icon,
@@ -961,6 +981,7 @@ class _OverviewTile extends StatelessWidget {
   final Color color;
   final VoidCallback onTap;
 
+  /// 建立卡片圖示、標籤、數值與點選區域。
   @override
   Widget build(BuildContext context) {
     return InkWell(
@@ -1000,6 +1021,7 @@ class _OverviewTile extends StatelessWidget {
   }
 }
 
+/// 顯示包含圖示、數值與說明文字的精簡數據卡片。
 class _InfoCard extends StatelessWidget {
   const _InfoCard({
     required this.title,
@@ -1015,6 +1037,7 @@ class _InfoCard extends StatelessWidget {
   final Color accent;
   final Color? valueColor;
 
+  /// 建立姿勢與座椅統計資料使用的精簡數據卡片。
   @override
   Widget build(BuildContext context) {
     return Container(

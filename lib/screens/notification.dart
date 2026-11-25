@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../state/chair_sync_controller.dart';
 import '../state/wellness_controller.dart';
 
+/// 顯示姿勢提醒與週報，並支援下拉更新。
 class NotificationPage extends StatefulWidget {
   const NotificationPage({
     super.key,
@@ -16,10 +17,12 @@ class NotificationPage extends StatefulWidget {
   State<NotificationPage> createState() => _NotificationPageState();
 }
 
+/// 篩選通知紀錄並格式化訊息內容。
 class _NotificationPageState extends State<NotificationPage> {
   String _selectedFilter = '提醒';
   static const _filterOptions = ['提醒', '周報'];
 
+  /// 套用所選的週報或姿勢提醒篩選條件。
   bool _matchesFilter(Map<String, dynamic> item) {
     final kind = item['kind']?.toString();
     if (_selectedFilter == '周報') {
@@ -49,6 +52,7 @@ class _NotificationPageState extends State<NotificationPage> {
     return '其它';
   }
 
+  /// 依通知提及的姿勢選取合適圖示。
   IconData _postureIcon(String title) {
     switch (title) {
       case '頭部前傾':
@@ -70,6 +74,7 @@ class _NotificationPageState extends State<NotificationPage> {
     }
   }
 
+  /// 建立篩選後的通知卡片，並提供下拉更新功能。
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
@@ -254,7 +259,7 @@ class _NotificationPageState extends State<NotificationPage> {
                               fontWeight: FontWeight.w800,
                             ),
                           ),
-                          // status dot removed per request
+                          // 依需求移除狀態圓點。
                         ],
                       ),
                     ],
@@ -268,11 +273,13 @@ class _NotificationPageState extends State<NotificationPage> {
     );
   }
 
+  /// 回傳本機日期鍵值，用於計算今日健康介入任務。
   String _todayKey() {
     final now = DateTime.now();
     return '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
   }
 
+  /// 一般文字直接顯示；週報則逐行格式化呈現。
   Widget _buildMessage(String message, {required bool isWeeklyReport}) {
     if (!isWeeklyReport) {
       return Text(
@@ -292,6 +299,7 @@ class _NotificationPageState extends State<NotificationPage> {
     );
   }
 
+  /// 解析週報每行中的標題、分隔線與項目符號。
   Widget _buildWeeklyLine(String rawLine) {
     final trimmedLine = rawLine.trim();
     if (trimmedLine.isEmpty) return const SizedBox(height: 8);
@@ -320,6 +328,7 @@ class _NotificationPageState extends State<NotificationPage> {
     );
   }
 
+  /// 將成對的 Markdown 粗體標記轉換為 Flutter 文字樣式。
   Widget _buildBoldText(String text, TextStyle style) {
     final spans = <InlineSpan>[];
     final pattern = RegExp(r'\*\*(.+?)(?:\*\*|$)');

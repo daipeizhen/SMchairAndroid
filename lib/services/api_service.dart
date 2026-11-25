@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+/// 表示座椅即時狀態回傳的電池資訊。
 class ChairBattery {
   const ChairBattery({
     this.present,
@@ -18,6 +19,7 @@ class ChairBattery {
   final double? voltage;
   final DateTime? updatedAt;
 
+  /// 解析電池資料；回應中沒有電池欄位時回傳 null。
   static ChairBattery? fromJson(dynamic value) {
     if (value is! Map) return null;
     return ChairBattery(
@@ -28,15 +30,18 @@ class ChairBattery {
     );
   }
 
+  /// 依電量與座椅連線狀態產生使用者可讀的文字。
   String label({required bool online}) {
     if (present == false) return '未偵測到電池';
     if (percent == null) return '電量未知';
     return online ? '$percent%' : '$percent%（離線前）';
   }
 
+  /// 將已偵測且電量不高於 20% 的電池判定為低電量。
   bool get isLow => present == true && (percent ?? 100) <= 20;
 }
 
+/// 集中處理 API 網址組合、登入驗證與後端資料操作。
 class ApiService {
   static const Duration _aiAdviceTimeout = Duration(seconds: 90);
 
@@ -49,6 +54,7 @@ class ApiService {
   static const String apiPrefix = '/api';
   static const String authTokenOverride = String.fromEnvironment('AUTH_TOKEN');
 
+  /// 移除網址結尾可選的 `/api`，避免組合端點時重複加入前綴。
   static String _apiBaseUrl() {
     final trimmed = baseUrl.endsWith('/')
         ? baseUrl.substring(0, baseUrl.length - 1)
@@ -89,10 +95,16 @@ class ApiService {
     'sedentary': '高風險',
   };
 
+  /// 將後端姿勢代碼轉成介面使用的中文名稱。
   static String toDisplayName(String code) => _displayNames[code] ?? code;
+
+  /// 依標準姿勢代碼取得介面顯示分數。
   static int toScore(String code) => _scores[code] ?? 70;
+
+  /// 依標準姿勢代碼取得風險等級文字。
   static String toRisk(String code) => _risks[code] ?? '未知';
 
+  /// 為已知姿勢名稱提供一致的圖表與狀態顏色。
   static Color postureColor(String value) {
     final normalized = value.trim().toLowerCase();
     switch (normalized) {
@@ -125,7 +137,8 @@ class ApiService {
     }
   }
 
-  // ── Token 管理 ──────────────────────────────────────────────
+  // ── 登入權杖管理 ────────────────────────────────────────────
+  /// 讀取已儲存的登入權杖；沒有時改用建置時提供的覆寫值。
   static Future<String?> getToken() async {
     final prefs = await SharedPreferences.getInstance();
     final savedToken = prefs.getString('auth_token');
@@ -135,38 +148,45 @@ class ApiService {
     return authTokenOverride.isNotEmpty ? authTokenOverride : null;
   }
 
+  /// 取得目前登入狀態所儲存的電子郵件。
   static Future<String?> getUserEmail() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString('user_email');
   }
 
+  /// 檢查本機或建置設定中是否有可用的登入權杖。
   static Future<bool> isLoggedIn() async {
     final token = await getToken();
     return token != null && token.isNotEmpty;
   }
 
+  /// 將登入權杖與帳號識別資料儲存至本機偏好設定。
   static Future<void> _saveAuth(String token, String email) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('auth_token', token);
     await prefs.setString('user_email', email);
   }
 
+  /// 清除本機登入資料，但保留已選取的座椅。
   static Future<void> logout() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('auth_token');
     await prefs.remove('user_email');
   }
 
+  /// 取得此裝置上次選取的座椅 ID。
   static Future<String?> getSavedChairId() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString('last_chair_device_id');
   }
 
+  /// 儲存使用者選取的座椅裝置 ID。
   static Future<void> saveChairId(String deviceId) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('last_chair_device_id', deviceId);
   }
 
+  /// 建立 JSON 標頭，並在端點需要驗證時附上登入權杖。
   static Future<Map<String, String>> _headers({bool auth = false}) async {
     final token = await getToken();
     final headers = <String, String>{
@@ -182,6 +202,7 @@ class ApiService {
     return headers;
   }
 
+  /// 組合 API 主機、`/api` 前綴、端點路徑與查詢參數。
   static Uri _buildApiUri(String path, {Map<String, String>? queryParameters}) {
     final normalizedPath = path.startsWith('/') ? path.substring(1) : path;
     final uri = Uri.parse('${_apiBaseUrl()}$apiPrefix/$normalizedPath');
@@ -192,6 +213,7 @@ class ApiService {
     return uri.replace(queryParameters: mergedQuery);
   }
 
+  /// 將回應解碼為 JSON 物件；格式錯誤或型別不符時回傳 null。
   static Map<String, dynamic>? _decodeJsonMap(String body) {
     try {
       final decoded = jsonDecode(body);
@@ -201,6 +223,7 @@ class ApiService {
     }
   }
 
+  /// 從後端支援的錯誤欄位名稱中擷取錯誤代碼。
   static String? _extractErrorCode(Map<String, dynamic>? data) {
     if (data == null) return null;
     final candidates = [data['error_code'], data['errorCode'], data['code']];
@@ -213,6 +236,7 @@ class ApiService {
     return null;
   }
 
+  /// 擷取可顯示給使用者的錯誤訊息，沒有時使用預設文字。
   static String _extractMessage(Map<String, dynamic>? data, String fallback) {
     if (data == null) return fallback;
     final candidates = [
@@ -234,6 +258,7 @@ class ApiService {
     return fallback;
   }
 
+  /// 解析直接回傳的通知清單，或常見包裝欄位中的通知清單。
   static List<Map<String, dynamic>> _decodeNotificationList(String body) {
     try {
       final decoded = jsonDecode(body);
@@ -262,6 +287,7 @@ class ApiService {
     return [];
   }
 
+  /// 檢查使用者名稱是否已註冊。
   static Future<bool> usernameExists(String username) async {
     try {
       final res = await http
@@ -286,6 +312,7 @@ class ApiService {
   }
 
   // ── 認證 ────────────────────────────────────────────────────
+  /// 驗證登入資料、儲存後端權杖，並整理登入錯誤訊息。
   static Future<
     ({bool success, String message, String? email, String? errorCode})
   >
@@ -360,6 +387,7 @@ class ApiService {
     }
   }
 
+  /// 建立使用者帳號，並儲存後端回傳的登入權杖。
   static Future<
     ({bool success, String message, String? email, String? errorCode})
   >
@@ -445,6 +473,7 @@ class ApiService {
     }
   }
 
+  /// 從後端取得目前登入使用者的個人資料。
   static Future<Map<String, dynamic>?> getMe() async {
     try {
       final res = await http
@@ -461,6 +490,7 @@ class ApiService {
   }
 
   // ── 坐姿 ────────────────────────────────────────────────────
+  /// 取得近期姿勢紀錄；無法取得時回傳空清單。
   static Future<List<Map<String, dynamic>>> getPostureHistory({
     int limit = 50,
   }) async {
@@ -489,6 +519,7 @@ class ApiService {
   }
 
   // ── AI 建議 ──────────────────────────────────────────────────
+  /// 送出 AI 建議工作並持續查詢，直到完成、失敗或逾時。
   static Future<
     ({
       bool success,
@@ -631,6 +662,7 @@ class ApiService {
     }
   }
 
+  /// 篩除格式錯誤的伸展項目，並將建議數量限制為三項。
   static List<Map<String, dynamic>> _decodeRecommendedExercises(Object? value) {
     if (value is! List) return [];
     return value
@@ -645,6 +677,7 @@ class ApiService {
         .toList();
   }
 
+  /// 取得後端伸展計畫，並解析目前支援的回應包裝格式。
   static Future<List<Map<String, dynamic>>> getStretchPlan() async {
     try {
       if (!await isLoggedIn()) return [];
@@ -676,6 +709,7 @@ class ApiService {
     }
   }
 
+  /// 回報已完成的伸展任務，並在有資料時回傳更新後的花園狀態。
   static Future<Map<String, dynamic>?> completeWellnessTask({
     required int exerciseId,
     required String source,
@@ -706,6 +740,7 @@ class ApiService {
     }
   }
 
+  /// 取得目前登入使用者的花園點數與連續天數。
   static Future<Map<String, dynamic>?> getWellnessGarden() async {
     try {
       final response = await http
@@ -722,6 +757,7 @@ class ApiService {
     }
   }
 
+  /// 取得指定天數內的健康任務完成紀錄。
   static Future<List<Map<String, dynamic>>> getWellnessHistory({
     int days = 30,
   }) async {
@@ -750,6 +786,7 @@ class ApiService {
   }
 
   // ── 通知 ────────────────────────────────────────────────────
+  /// 取得目前登入使用者的姿勢提醒與週報通知。
   static Future<List<Map<String, dynamic>>> getNotificationHistory({
     int limit = 50,
   }) async {
@@ -779,7 +816,7 @@ class ApiService {
   }
 
   // ── 使用者設定 ──────────────────────────────────────────────────────
-  /// 更新使用者資料（顯示名稱、身高、體重、Email）到後端。
+  /// 將使用者顯示名稱、身高、體重與電子郵件更新至後端。
   static Future<bool> updateMe(Map<String, dynamic> updates) async {
     try {
       final res = await http
@@ -792,7 +829,7 @@ class ApiService {
 
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body) as Map<String, dynamic>;
-        // 可選：更新本地存儲的 userEmail（若後端回傳了更新後的 email）
+        // 後端若回傳更新後的電子郵件，也同步更新本機資料。
         if (data['email'] != null) {
           await _saveAuth(await getToken() ?? '', data['email'] as String);
         }
@@ -803,6 +840,7 @@ class ApiService {
     }
   }
 
+  /// 刪除帳號，並清除登入資料與該帳號範圍內的本機偏好設定。
   static Future<String?> deleteAccount(String password) async {
     try {
       final response = await http
@@ -838,6 +876,7 @@ class ApiService {
     }
   }
 
+  /// 驗證並整理忘記密碼流程第一階段的請求資料。
   static Map<String, String> forgotPasswordRequestPayload({
     required String username,
     required String email,
@@ -852,6 +891,7 @@ class ApiService {
     return {'email': safeEmail, 'username': safeUsername};
   }
 
+  /// 建立 API 請求資料前，先驗證重設碼與新密碼。
   static Map<String, String> forgotPasswordVerifyPayload({
     required String username,
     required String code,
@@ -875,7 +915,7 @@ class ApiService {
     };
   }
 
-  /// 忘記密碼第一步：驗證帳號＋Email 後，請後端寄出 6 碼驗證碼到信箱。
+  /// 忘記密碼第一步：驗證帳號與電子郵件後，請後端寄出六碼驗證碼。
   static Future<({bool success, String message})> requestPasswordResetCode({
     required String username,
     required String email,
@@ -960,6 +1000,7 @@ class ApiService {
     }
   }
 
+  /// 確認新舊密碼欄位有效後，向後端送出修改請求。
   static Future<({bool success, String message})> changePassword({
     required String currentPassword,
     required String newPassword,
@@ -1003,6 +1044,7 @@ class ApiService {
     }
   }
 
+  /// 上傳頭像圖片，並回傳後端提供的頭像網址。
   static Future<({bool success, String message, String? avatarUrl})>
   uploadAvatar({required Uint8List bytes, required String filename}) async {
     try {
@@ -1043,6 +1085,7 @@ class ApiService {
     }
   }
 
+  /// 僅在回應為非空圖片時下載並回傳頭像資料。
   static Future<Uint8List?> loadAvatarBytes(String avatarUrl) async {
     try {
       final response = await http
@@ -1065,6 +1108,7 @@ class ApiService {
   }
 
   // ── 座椅佔用 ──────────────────────────────────────────────────────────────
+  /// 取得目前登入使用者可選取的座椅清單。
   static Future<List<Map<String, dynamic>>> getChairs() async {
     final response = await http
         .get(_buildApiUri('chairs'), headers: await _headers(auth: true))
@@ -1084,6 +1128,7 @@ class ApiService {
         .toList();
   }
 
+  /// 入座指定座椅，成功後儲存座椅 ID。
   static Future<({bool success, bool calibrated, String message})>
   chairCheckin({String? deviceId}) async {
     try {
@@ -1119,6 +1164,7 @@ class ApiService {
     }
   }
 
+  /// 啟動座椅校準並持續查詢，直到完成或逾時。
   static Future<({bool success, String message, bool calibrated, int? samples})>
   calibrateChairAuto() async {
     try {
@@ -1190,6 +1236,7 @@ class ApiService {
     }
   }
 
+  /// 使用者結束座椅使用時，向後端送出離座請求。
   static Future<void> chairCheckout() async {
     try {
       await http
@@ -1201,6 +1248,7 @@ class ApiService {
     } catch (_) {}
   }
 
+  /// 取得所選座椅目前的連線狀態與電池資訊。
   static Future<Map<String, dynamic>?> getChairStatus({
     String? deviceId,
   }) async {

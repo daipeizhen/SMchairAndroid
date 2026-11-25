@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 import '../state/wellness_controller.dart';
 
+/// 提供個人資料、座椅、密碼、頭像與帳號管理設定。
 class SettingPage extends StatefulWidget {
   const SettingPage({
     super.key,
@@ -28,6 +29,7 @@ class SettingPage extends StatefulWidget {
   State<SettingPage> createState() => _SettingPageState();
 }
 
+/// 載入帳號專屬偏好設定，並透過 API 更新個人資料。
 class _SettingPageState extends State<SettingPage> {
   static const List<IconData> _avatarIcons = [
     Icons.person_rounded,
@@ -78,6 +80,7 @@ class _SettingPageState extends State<SettingPage> {
   bool _isSelectingChair = false;
   String? _savedChairId;
 
+  /// 依登入電子郵件區隔本機設定；未登入時使用訪客範圍。
   String get _userScope {
     final email = widget.userEmail?.trim().toLowerCase();
     if (widget.isLoggedIn && email != null && email.isNotEmpty) {
@@ -97,12 +100,14 @@ class _SettingPageState extends State<SettingPage> {
 
   String get _avatarLabel => _avatarLabels[_avatarIndex % _avatarLabels.length];
 
+  /// 設定頁開啟時載入偏好設定與後端個人資料。
   @override
   void initState() {
     super.initState();
     _loadSettings();
   }
 
+  /// 目前帳號變更時重新載入帳號專屬偏好設定。
   @override
   void didUpdateWidget(covariant SettingPage oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -116,6 +121,7 @@ class _SettingPageState extends State<SettingPage> {
     }
   }
 
+  /// 優先載入後端個人資料，再以偏好設定補足缺漏欄位。
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     final savedChairId = await ApiService.getSavedChairId();
@@ -188,6 +194,7 @@ class _SettingPageState extends State<SettingPage> {
     }
   }
 
+  /// 將設定儲存於本機；使用者已登入時，同步更新個人資料欄位。
   Future<bool> _saveSettings() async {
     final prefs = await SharedPreferences.getInstance();
     final heightStr = heightController.text.trim();
@@ -222,6 +229,7 @@ class _SettingPageState extends State<SettingPage> {
     return true;
   }
 
+  /// 讓使用者上傳圖片或選擇內建頭像。
   Future<void> _pickAvatar() async {
     final selected = await showModalBottomSheet<int>(
       context: context,
@@ -329,6 +337,7 @@ class _SettingPageState extends State<SettingPage> {
     }
   }
 
+  /// 上傳頭像前，先驗證圖片格式與檔案大小。
   Future<void> _uploadAvatarFile() async {
     if (!widget.isLoggedIn || _isUploadingAvatar) return;
 
@@ -377,6 +386,7 @@ class _SettingPageState extends State<SettingPage> {
     ).showSnackBar(SnackBar(content: Text(response.message)));
   }
 
+  /// 送出密碼修改請求前，先驗證兩個密碼欄位。
   Future<void> _changePassword() async {
     final currentPassword = currentPasswordController.text;
     final newPassword = newPasswordController.text;
@@ -421,6 +431,7 @@ class _SettingPageState extends State<SettingPage> {
     }
   }
 
+  /// 顯示已上傳的圖片或目前選取的內建頭像。
   Widget _buildAvatarPreview() {
     if (_avatarBytes != null) {
       return Container(
@@ -462,6 +473,7 @@ class _SettingPageState extends State<SettingPage> {
     );
   }
 
+  /// 建立含輸入驗證與顯示切換功能的密碼欄位。
   Widget _buildPasswordField({
     required String label,
     required TextEditingController controller,
@@ -495,6 +507,7 @@ class _SettingPageState extends State<SettingPage> {
     );
   }
 
+  /// 釋放設定表單持有的所有文字控制器。
   @override
   void dispose() {
     heightController.dispose();
@@ -507,6 +520,7 @@ class _SettingPageState extends State<SettingPage> {
     super.dispose();
   }
 
+  /// 顯示線上座椅選項並回傳選取的裝置 ID。
   Future<String?> _showChairPicker(List<Map<String, dynamic>> chairs) async {
     var selectedId =
         chairs.any((chair) => chair['device_id']?.toString() == _savedChairId)
@@ -555,6 +569,7 @@ class _SettingPageState extends State<SettingPage> {
     );
   }
 
+  /// 儲存選取的線上座椅、執行入座並顯示結果。
   Future<void> _changeChair() async {
     if (_isSelectingChair) return;
     setState(() => _isSelectingChair = true);
@@ -601,6 +616,7 @@ class _SettingPageState extends State<SettingPage> {
     }
   }
 
+  /// 刪除帳號前確認密碼，成功後呼叫回傳函式。
   Future<void> _deleteAccount() async {
     deletePasswordController.clear();
     final confirmed = await showDialog<bool>(
@@ -679,6 +695,7 @@ class _SettingPageState extends State<SettingPage> {
     await widget.onAccountDeleted?.call();
   }
 
+  /// 建立一致的數值或文字個人資料欄位，並顯示單位標籤。
   Widget buildTextField({
     required String label,
     required String unit,
@@ -733,6 +750,7 @@ class _SettingPageState extends State<SettingPage> {
     );
   }
 
+  /// 使用共用卡片版面整理相關設定項目。
   Widget _sectionPanel({
     required String title,
     required IconData icon,
@@ -788,6 +806,7 @@ class _SettingPageState extends State<SettingPage> {
     );
   }
 
+  /// 顯示個人資料、座椅、密碼、頭像與帳號設定。
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(

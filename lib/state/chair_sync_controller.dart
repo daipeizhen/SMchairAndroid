@@ -4,6 +4,7 @@ import '../services/api_service.dart';
 import '../services/browser_notification_stub.dart'
     if (dart.library.html) '../services/browser_notification_web.dart';
 
+/// 保存座椅即時狀態，並與後端同步姿勢及通知資料。
 class ChairSyncController extends ChangeNotifier {
   ChairSyncController() : sessionOpenedAt = null;
 
@@ -26,6 +27,7 @@ class ChairSyncController extends ChangeNotifier {
   final List<Map<String, dynamic>> notifications = [];
   final List<Map<String, dynamic>> postureHistory = [];
 
+  /// 更新目前姿勢、記錄歷史，並在需要調整時建立提醒。
   void updatePosture({
     required String code,
     required String label,
@@ -46,6 +48,7 @@ class ChairSyncController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 新增本機姿勢紀錄，並將保留筆數限制為 100 筆。
   void addPostureHistory({
     required String label,
     required int score,
@@ -60,6 +63,7 @@ class ChairSyncController extends ChangeNotifier {
     if (postureHistory.length > 100) postureHistory.removeAt(0);
   }
 
+  /// 為需要調整的姿勢建立本機提醒。
   void addPostureNotification(String posture) {
     final now = TimeOfDay.now();
     final timeText =
@@ -76,16 +80,19 @@ class ChairSyncController extends ChangeNotifier {
     if (notifications.length > 20) notifications.removeLast();
   }
 
+  /// 清除目前顯示的提醒，並通知監聽中的畫面。
   void clearNotifications() {
     notifications.clear();
     notifyListeners();
   }
 
+  /// 清除目前控制器記憶體中的姿勢紀錄。
   void clearPostureHistory() {
     postureHistory.clear();
     notifyListeners();
   }
 
+  /// 登出時清除帳號相關姿勢、座椅與通知狀態。
   void clearUserData() {
     postureLabel = '';
     postureCode = '';
@@ -103,11 +110,13 @@ class ChairSyncController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 尚未開始計時時，建立新的入座使用時段。
   void startSession() {
     sessionOpenedAt ??= DateTime.now();
     notifyListeners();
   }
 
+  /// 結束目前使用時段並清除暫存的座椅連線狀態。
   void stopSession() {
     sessionOpenedAt = null;
     _lastPostureWasSedentary = false;
@@ -116,13 +125,14 @@ class ChairSyncController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 銷毀控制器前取消定期同步計時器。
   @override
   void dispose() {
     _syncTimer?.cancel();
     super.dispose();
   }
 
-  /// Start periodic background sync with backend to keep UI consistent with server
+  /// 啟動定期同步，並立即向後端取得最新狀態。
   void startAutoSync({Duration interval = const Duration(seconds: 5)}) {
     _syncTimer?.cancel();
     _syncTimer = Timer.periodic(interval, (_) async {
@@ -131,18 +141,21 @@ class ChairSyncController extends ChangeNotifier {
     _pullFromServer();
   }
 
+  /// 單次同步後端資料，不變更定期同步計時器。
   Future<void> refreshFromServer() async {
     await _pullFromServer();
   }
 
+  /// 停止定期 API 輪詢，但保留目前畫面上的狀態。
   void stopAutoSync() {
     _syncTimer?.cancel();
     _syncTimer = null;
   }
 
+  /// 取得姿勢、座椅與通知資料，成功後通知監聽者更新畫面。
   Future<void> _pullFromServer() async {
     try {
-      // Pull latest posture history and notification history
+      // 取得最新姿勢歷史與通知歷史。
       final history = await ApiService.getPostureHistory(limit: 100);
       final notificationHistory = await ApiService.getNotificationHistory(
         limit: 50,
@@ -153,7 +166,7 @@ class ChairSyncController extends ChangeNotifier {
         chairBattery = ChairBattery.fromJson(chairStatus['battery']);
       }
 
-      // Map server posture entries into controller format
+      // 將後端姿勢資料轉換成控制器使用的格式。
       if (history.isNotEmpty) {
         postureHistory.clear();
         _applyPosturePayload(history.first);
@@ -183,7 +196,7 @@ class ChairSyncController extends ChangeNotifier {
 
       lastBackendSyncAt = DateTime.now();
 
-      // Update notifications from history list
+      // 依後端歷史清單更新通知。
       notifications.clear();
       for (final n in notificationHistory) {
         final notificationId = n['id']?.toString();
@@ -226,15 +239,17 @@ class ChairSyncController extends ChangeNotifier {
 
       notifyListeners();
     } catch (_) {
-      // ignore network errors; keep current local state
+      // 網路要求失敗時保留目前狀態。
     }
   }
 
+  /// 後端未提供時間戳記時，使用本機時間產生通知時間文字。
   String _formatNow() {
     final now = TimeOfDay.now();
     return '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
   }
 
+  /// 將後端不同格式的姿勢欄位轉為控制器狀態並更新計時資訊。
   void _applyPosturePayload(Map<String, dynamic> payload) {
     final source = _postureSource(payload);
     final code = _postureCodeFrom(source);
@@ -274,10 +289,12 @@ class ChairSyncController extends ChangeNotifier {
     _lastPostureWasSedentary = isSedentary;
   }
 
+  /// 移除 Markdown 粗體標記，讓後端建議以純文字顯示。
   String _cleanAdviceText(String text) {
     return text.replaceAll('**', '').trim();
   }
 
+  /// 後端將姿勢資料包在已知欄位中時，取出內層資料。
   Map<String, dynamic> _postureSource(Map<String, dynamic> payload) {
     for (final key in ['latest', 'current', 'posture_data', 'data']) {
       final value = payload[key];
@@ -288,6 +305,7 @@ class ChairSyncController extends ChangeNotifier {
     return payload;
   }
 
+  /// 讀取後端支援的姿勢欄位別名與座椅使用狀態。
   String _postureCodeFrom(Map<String, dynamic> payload) {
     final occupied =
         payload['occupied'] ?? payload['is_occupied'] ?? payload['active'];
@@ -312,6 +330,7 @@ class ChairSyncController extends ChangeNotifier {
     return occupied == true ? '' : 'empty';
   }
 
+  /// 將常見的入座狀態文字轉換為應用程式使用的標準姿勢代碼。
   String _normalizePostureCode(String value) {
     switch (value.toLowerCase()) {
       case 'occupied':
@@ -328,6 +347,7 @@ class ChairSyncController extends ChangeNotifier {
     }
   }
 
+  /// 從結構化或舊版通知資料中擷取可讀的姿勢名稱。
   String _notificationPostureLabel(Map<String, dynamic> item) {
     for (final key in ['posture', 'posture_code', 'posture_display', 'label']) {
       final raw = item[key]?.toString().trim();
@@ -362,6 +382,7 @@ class ChairSyncController extends ChangeNotifier {
     return '姿勢提醒';
   }
 
+  /// 整理後端通知文字；沒有訊息時提供預設內容。
   String _notificationMessage(Map<String, dynamic> item, String postureLabel) {
     final message =
         item['message']?.toString().trim() ??
@@ -377,6 +398,7 @@ class ChairSyncController extends ChangeNotifier {
     return '坐姿提醒：$postureLabel，請調整坐姿。';
   }
 
+  /// 今天的時間只顯示時分，其他日期則同時顯示日期與時間。
   String _notificationTime(Map<String, dynamic> item) {
     final raw = item['timestamp']?.toString() ?? item['time']?.toString() ?? '';
     if (raw.isEmpty) return '';

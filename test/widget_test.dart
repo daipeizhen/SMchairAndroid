@@ -9,11 +9,13 @@ import 'package:smart_chair_app/state/chair_sync_controller.dart';
 import 'package:smart_chair_app/state/wellness_controller.dart';
 
 void main() {
+  // 確認應用程式根元件可以建立初始畫面。
   testWidgets('App shell renders', (WidgetTester tester) async {
     await tester.pumpWidget(const SmartChairApp());
     expect(find.text('智慧座椅'), findsOneWidget);
   });
 
+  // 確認註冊時重複使用者名稱會顯示明確提示。
   test('register duplicate username message is reported clearly', () {
     expect(
       AuthPage.usernameValidationMessage(
@@ -24,6 +26,7 @@ void main() {
     );
   });
 
+  // 驗證忘記密碼請求的有效與欄位缺漏情況。
   test('forgot password step 1 requires username and email', () {
     final validPayload = ApiService.forgotPasswordRequestPayload(
       username: 'alice',
@@ -45,6 +48,7 @@ void main() {
     );
   });
 
+  // 驗證重設驗證碼長度及新密碼欄位。
   test('forgot password step 2 requires a 6-digit code and a new password', () {
     final validPayload = ApiService.forgotPasswordVerifyPayload(
       username: 'alice',
@@ -83,6 +87,7 @@ void main() {
     );
   });
 
+  // 確認修改密碼請求使用後端定義的欄位名稱。
   test('change password sends one canonical payload shape', () {
     final payload = {'current_password': '123456', 'new_password': '123789'};
 
@@ -91,6 +96,7 @@ void main() {
     expect(payload['new_password'], '123789');
   });
 
+  // 覆蓋低電量、離線及未偵測到電池時的顯示情況。
   test('chair battery summary handles low and missing batteries', () {
     final lowBattery = ChairBattery.fromJson({'present': true, 'percent': 18});
     final missingBattery = ChairBattery.fromJson({'present': false});
@@ -101,6 +107,7 @@ void main() {
     expect(ChairBattery.fromJson(null), isNull);
   });
 
+  // 確認健康總覽不會重新顯示已移除的今日報表。
   testWidgets('dashboard omits the daily health report', (tester) async {
     final chairController = ChairSyncController();
     final wellnessController = WellnessController();

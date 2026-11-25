@@ -9,6 +9,7 @@ import 'ai_advice_page.dart';
 import 'health_garden_page.dart';
 import '../state/wellness_controller.dart';
 
+/// 提供登入後的應用程式外殼，並管理共用頁面導覽。
 class HomePage extends StatefulWidget {
   const HomePage({
     super.key,
@@ -23,6 +24,7 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
+/// 管理帳號生命週期、頁面選擇與主要導覽。
 class _HomePageState extends State<HomePage> {
   int currentIndex = 0;
   bool _isLoggedIn = false;
@@ -36,12 +38,14 @@ class _HomePageState extends State<HomePage> {
     {'icon': Icons.notifications_active_rounded, 'label': '通知', 'hint': '提醒中心'},
   ];
 
+  /// 讀取已儲存的帳號並初始化對應的應用程式狀態。
   @override
   void initState() {
     super.initState();
     _refreshAuthState();
   }
 
+  /// 重新載入帳號狀態，並忽略較早請求所回傳的過期資料。
   Future<void> _refreshAuthState() async {
     final refreshVersion = ++_authRefreshVersion;
     final wasLoggedIn = _isLoggedIn;
@@ -70,10 +74,12 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  /// 使用應用程式共用的訊息列顯示簡短狀態提示。
   void _showMsg(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
+  /// 開啟登入或註冊流程，成功後更新應用程式狀態。
   Future<void> _openAuth(AuthMode mode) async {
     final String? email = await Navigator.of(context).push<String>(
       MaterialPageRoute(builder: (_) => AuthPage(initialMode: mode)),
@@ -88,12 +94,13 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  /// 嘗試離座、清除本機登入資料並重設控制器狀態。
   Future<void> _logout() async {
-    // 在登出前嘗試 checkout（代表使用者離開椅子）
+    // 登出前嘗試送出離座請求，表示使用者已離開座椅。
     try {
       await ApiService.chairCheckout();
     } catch (_) {
-      // 忽略 checkout 錯誤，仍然繼續登出流程
+      // 離座請求失敗時仍繼續登出流程。
     }
 
     await ApiService.logout();
@@ -104,6 +111,7 @@ class _HomePageState extends State<HomePage> {
     await _refreshAuthState();
   }
 
+  /// 刪除帳號後停止同步並重設記憶體中的資料。
   Future<void> _accountDeleted() async {
     if (!mounted) return;
     widget.chairSyncController.stopSession();
@@ -113,16 +121,19 @@ class _HomePageState extends State<HomePage> {
     await _refreshAuthState();
   }
 
+  /// 從設定頁登出並返回登入畫面。
   Future<void> _logoutFromSettings() async {
     await _logout();
     if (mounted) Navigator.of(context).pop();
   }
 
+  /// 帳號刪除後關閉設定頁，顯示已登出的主頁外殼。
   Future<void> _accountDeletedFromSettings() async {
     await _accountDeleted();
     if (mounted) Navigator.of(context).pop();
   }
 
+  /// 以獨立路由開啟設定，保留原本的底部導覽列。
   void _openSettings() {
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -141,6 +152,7 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  /// 建立未登入的進入頁或登入後的應用程式外殼。
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -237,12 +249,14 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
+/// 顯示公開的登入與註冊入口。
 class _AuthLandingPage extends StatelessWidget {
   const _AuthLandingPage({required this.onLogin, required this.onRegister});
 
   final VoidCallback onLogin;
   final VoidCallback onRegister;
 
+  /// 建立含登入與註冊操作的進入畫面。
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -333,6 +347,7 @@ class _AuthLandingPage extends StatelessWidget {
   }
 }
 
+/// 顯示應用程式識別資訊與可選的平台標章。
 class _BrandBadge extends StatelessWidget {
   const _BrandBadge({
     required this.colorScheme,
@@ -344,6 +359,7 @@ class _BrandBadge extends StatelessWidget {
   final bool showAndroidTag;
   final bool compact;
 
+  /// 依可用寬度與平台標章調整品牌標誌版面。
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(

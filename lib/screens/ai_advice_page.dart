@@ -4,6 +4,7 @@ import '../services/api_service.dart';
 import '../state/chair_sync_controller.dart';
 import '../state/wellness_controller.dart';
 
+/// 讓使用者取得姿勢建議並瀏覽推薦運動。
 class AiAdvicePage extends StatefulWidget {
   const AiAdvicePage({
     super.key,
@@ -20,6 +21,7 @@ class AiAdvicePage extends StatefulWidget {
   State<AiAdvicePage> createState() => _AiAdvicePageState();
 }
 
+/// 管理建議產生、控制器更新與運動項目呈現。
 class _AiAdvicePageState extends State<AiAdvicePage> {
   final TextEditingController _userMessageController = TextEditingController();
   bool _adviceVisible = false;
@@ -29,6 +31,7 @@ class _AiAdvicePageState extends State<AiAdvicePage> {
 
   late final VoidCallback _controllerListener;
 
+  /// 訂閱姿勢變更並初始化建議提示文字。
   @override
   void initState() {
     super.initState();
@@ -39,6 +42,7 @@ class _AiAdvicePageState extends State<AiAdvicePage> {
     _syncFromController();
   }
 
+  /// 頁面取得新的控制器時，重新綁定姿勢監聽器。
   @override
   void didUpdateWidget(covariant AiAdvicePage oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -49,6 +53,7 @@ class _AiAdvicePageState extends State<AiAdvicePage> {
     }
   }
 
+  /// 釋放文字控制器並移除姿勢監聽器。
   @override
   void dispose() {
     _userMessageController.dispose();
@@ -56,6 +61,7 @@ class _AiAdvicePageState extends State<AiAdvicePage> {
     super.dispose();
   }
 
+  /// 姿勢資料尚未載入時更新初始提示文字。
   void _syncFromController() {
     final postureCode = widget.controller.postureCode;
     if (postureCode.isEmpty && !_adviceVisible) {
@@ -63,6 +69,7 @@ class _AiAdvicePageState extends State<AiAdvicePage> {
     }
   }
 
+  /// 驗證使用時段與姿勢資料、取得建議後更新花園任務。
   Future<void> _requestAgentAdvice() async {
     if (_isFetchingAdvice) return;
 
@@ -131,6 +138,7 @@ class _AiAdvicePageState extends State<AiAdvicePage> {
     }
   }
 
+  /// 將多行建議拆分，分別格式化顯示。
   Widget _buildAdviceText(String text) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -138,6 +146,7 @@ class _AiAdvicePageState extends State<AiAdvicePage> {
     );
   }
 
+  /// 格式化單行建議，包括標題、分隔線與項目符號。
   Widget _buildAdviceLine(String rawLine) {
     final line = rawLine.trimRight();
     if (line.trim().isEmpty) return const SizedBox(height: 8);
@@ -187,6 +196,7 @@ class _AiAdvicePageState extends State<AiAdvicePage> {
     );
   }
 
+  /// 將文字中的 Markdown 粗體標記轉為豐富文字樣式。
   Widget _buildInlineAdviceText(String text, [TextStyle? style]) {
     final baseStyle =
         style ??
@@ -211,6 +221,7 @@ class _AiAdvicePageState extends State<AiAdvicePage> {
     return Text.rich(TextSpan(style: baseStyle, children: spans));
   }
 
+  /// 在外部瀏覽器開啟推薦運動的網址。
   Future<void> _openExercise(Map<String, dynamic> exercise) async {
     final rawUrl = exercise['youtube_url']?.toString().trim() ?? '';
     final uri = Uri.tryParse(rawUrl);
@@ -230,6 +241,7 @@ class _AiAdvicePageState extends State<AiAdvicePage> {
     }
   }
 
+  /// 僅在有推薦結果時顯示運動清單。
   Widget _buildExerciseCards() {
     if (_recommendedExercises.isEmpty) return const SizedBox.shrink();
     return Column(
@@ -249,6 +261,7 @@ class _AiAdvicePageState extends State<AiAdvicePage> {
     );
   }
 
+  /// 使用 API 支援的欄位名稱建立單項運動卡片。
   Widget _buildExerciseCard(Map<String, dynamic> exercise) {
     final name = exercise['name']?.toString() ?? '推薦伸展';
     final target = exercise['target_muscles']?.toString() ?? '';
@@ -340,6 +353,7 @@ class _AiAdvicePageState extends State<AiAdvicePage> {
     );
   }
 
+  /// 建立 AI 諮詢表單、建議結果與推薦運動清單。
   @override
   Widget build(BuildContext context) {
     final postureCode = widget.controller.postureCode;
@@ -566,12 +580,14 @@ class _AiAdvicePageState extends State<AiAdvicePage> {
   }
 }
 
+/// 顯示簡短的 AI 教練角色標籤。
 class _CoachChip extends StatelessWidget {
   const _CoachChip({required this.label, required this.icon});
 
   final String label;
   final IconData icon;
 
+  /// 建立建議頁面使用的精簡教練識別標籤。
   @override
   Widget build(BuildContext context) {
     return Container(

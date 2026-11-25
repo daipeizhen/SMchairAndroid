@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/wellness_models.dart';
 import '../services/api_service.dart';
 
+/// 管理每日介入任務、完成紀錄與健康花園進度。
 class WellnessController extends ChangeNotifier {
   static const _baseTasks = <WellnessTask>[
     WellnessTask(
@@ -67,6 +68,7 @@ class WellnessController extends ChangeNotifier {
   List<WellnessTask> _dailyTasks = const [];
   final Set<String> _aiAdviceTaskKeys = {};
 
+  /// 最多回傳六項每日任務，並排除與 AI 建議重複的項目。
   List<WellnessTask> get tasks {
     final source = _dailyTasks.isEmpty ? _baseTasks : _dailyTasks;
     final selected = <WellnessTask>[];
@@ -91,6 +93,7 @@ class WellnessController extends ChangeNotifier {
 
   double get growthProgress => pointsInLevel / 100;
 
+  /// 依姿勢代碼選取任務；找不到對應項目時使用姿勢覺察任務。
   WellnessTask taskForPosture(String postureCode) {
     if (_dailyTasks.isNotEmpty && postureCode == 'ai') {
       return _dailyTasks.first;
@@ -101,6 +104,7 @@ class WellnessController extends ChangeNotifier {
     );
   }
 
+  /// 將已儲存的任務 ID 轉換為歷史紀錄使用的顯示名稱。
   String taskTitleForRecord(String taskId) {
     for (final task in [..._dailyTasks, ..._baseTasks]) {
       if (task.id == taskId) return task.title;
@@ -108,6 +112,7 @@ class WellnessController extends ChangeNotifier {
     return '伸展任務';
   }
 
+  /// 排除與目前 AI 推薦伸展重複的每日任務。
   void setAiAdviceTasks(List<Map<String, dynamic>> exercises) {
     _aiAdviceTaskKeys
       ..clear()
@@ -128,6 +133,7 @@ class WellnessController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 使用正規化後的 AI 伸展 ID 與名稱比對任務。
   bool _conflictsWithAiAdvice(WellnessTask task) {
     if (_aiAdviceTaskKeys.isEmpty) return false;
     final titleKey = _taskKey(task.title);
@@ -136,9 +142,11 @@ class WellnessController extends ChangeNotifier {
         _aiAdviceTaskKeys.contains(idKey);
   }
 
+  /// 移除標點並統一英文大小寫，避免影響文字比對。
   String _taskKey(String value) =>
       value.toLowerCase().replaceAll(RegExp(r'[^a-z0-9\u4e00-\u9fff]'), '');
 
+  /// 檢查今天是否已有相同任務的完成紀錄。
   bool isCompletedToday(String taskId) {
     final today = _dateKey(DateTime.now());
     return records.any(
@@ -146,6 +154,7 @@ class WellnessController extends ChangeNotifier {
     );
   }
 
+  /// 切換帳號範圍並重設狀態，再載入本機與後端資料。
   Future<void> initialize(String? userScope) async {
     final nextScope = userScope?.trim().toLowerCase();
     _scope = nextScope == null || nextScope.isEmpty ? 'guest' : nextScope;
@@ -179,11 +188,13 @@ class WellnessController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 重新取得每日任務計畫，更新後通知畫面重新建置。
   Future<void> refreshDailyTasks() async {
     await _loadDailyTasks(force: true);
     notifyListeners();
   }
 
+  /// 合併本機與後端完成紀錄，並重新計算連續天數。
   Future<void> refreshHistory() async {
     final prefs = await SharedPreferences.getInstance();
     records
@@ -197,6 +208,7 @@ class WellnessController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 更新後端管理的點數與連續天數，不覆蓋本機任務紀錄。
   Future<void> refreshGarden() async {
     final garden = await ApiService.getWellnessGarden();
     if (garden != null) _applyGarden(garden);
@@ -204,11 +216,13 @@ class WellnessController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 套用後端回傳的統計值；欄位缺漏時保留目前本機數值。
   void _applyGarden(Map<String, dynamic> garden) {
     points = (garden['points'] as num?)?.toInt() ?? points;
     streak = (garden['streak'] as num?)?.toInt() ?? streak;
   }
 
+  /// 優先使用今天有效的快取，否則取得後端計畫或載入預設任務。
   Future<void> _loadDailyTasks({bool force = false}) async {
     final prefs = await SharedPreferences.getInstance();
     final today = _dateKey(DateTime.now());
@@ -226,7 +240,7 @@ class WellnessController extends ChangeNotifier {
             if (_dailyTasks.isNotEmpty) return;
           }
         } on FormatException {
-          // Fetch a fresh plan when the cached value is invalid.
+          // 快取格式錯誤時，改為重新取得任務計畫。
         }
       }
     }
@@ -242,6 +256,7 @@ class WellnessController extends ChangeNotifier {
     await prefs.setString(_key('dailyTasks'), jsonEncode(exercises.take(6)));
   }
 
+  /// 將後端伸展項目的資料格式轉換為應用程式的任務模型。
   WellnessTask _taskFromExercise(Map<String, dynamic> exercise) {
     final name =
         exercise['name']?.toString().trim() ??
@@ -269,6 +284,7 @@ class WellnessController extends ChangeNotifier {
     );
   }
 
+  /// 匯入後端完成紀錄，並略過本機已有的重複項目。
   Future<void> _loadWellnessHistory() async {
     if (!await ApiService.isLoggedIn()) return;
     final history = await ApiService.getWellnessHistory();
@@ -296,12 +312,14 @@ class WellnessController extends ChangeNotifier {
     _recalculateStreak();
   }
 
+  /// 在任務完成流程開始前，儲存使用者目前選取的任務。
   Future<void> acceptTask(WellnessTask task) async {
     activeTaskId = task.id;
     await _persist();
     notifyListeners();
   }
 
+  /// 每項任務每天只記錄一次，並套用本機或後端回傳的獎勵。
   Future<bool> completeTask(WellnessTask task, {String feedback = '完成'}) async {
     if (isCompletedToday(task.id)) return false;
     Map<String, dynamic>? garden;
@@ -340,8 +358,10 @@ class WellnessController extends ChangeNotifier {
     return true;
   }
 
+  /// 建立目前帳號專屬的偏好設定鍵值。
   String _key(String field) => 'wellness_${_scope}_$field';
 
+  /// 解碼已儲存的紀錄；JSON 無效時回傳空清單，讓初始化繼續。
   List<WellnessRecord> _decodeRecords(String? encoded) {
     if (encoded == null || encoded.isEmpty) return [];
     try {
@@ -356,9 +376,11 @@ class WellnessController extends ChangeNotifier {
     }
   }
 
+  /// 產生本機日期鍵值，用於彙整每日任務完成紀錄。
   String _dateKey(DateTime date) =>
       '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
 
+  /// 從今天往前計算連續有完成任務的日數。
   void _recalculateStreak() {
     final completedDays = records.map((record) => record.dateKey).toSet();
     var cursor = DateTime.now();
@@ -370,6 +392,7 @@ class WellnessController extends ChangeNotifier {
     streak = count;
   }
 
+  /// 將控制器狀態儲存在目前帳號專屬的偏好設定命名空間。
   Future<void> _persist() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_key('points'), points);

@@ -1,3 +1,4 @@
+/// 描述一項健康任務及其完成獎勵。
 class WellnessTask {
   const WellnessTask({
     required this.id,
@@ -20,6 +21,7 @@ class WellnessTask {
   final String? group;
 }
 
+/// 記錄已完成任務的日期、使用者回饋與取得點數。
 class WellnessRecord {
   const WellnessRecord({
     required this.taskId,
@@ -35,6 +37,7 @@ class WellnessRecord {
   final String feedback;
   final int points;
 
+  /// 將紀錄轉成可儲存於本機偏好設定的 JSON 格式。
   Map<String, dynamic> toJson() => {
     'taskId': taskId,
     'dateKey': dateKey,
@@ -43,6 +46,7 @@ class WellnessRecord {
     'points': points,
   };
 
+  /// 從已儲存的 JSON 還原紀錄，並容許欄位缺漏或資料格式錯誤。
   factory WellnessRecord.fromJson(Map<String, dynamic> json) {
     return WellnessRecord(
       taskId: json['taskId']?.toString() ?? '',

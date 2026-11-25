@@ -4,6 +4,7 @@ import 'package:smart_chair_app/models/wellness_models.dart';
 import 'package:smart_chair_app/state/wellness_controller.dart';
 
 void main() {
+  // 確認姿勢代碼會選取對應任務，未知代碼則安全地使用預設任務。
   test('posture maps to a concrete intervention task', () {
     final controller = WellnessController();
 
@@ -12,6 +13,7 @@ void main() {
     expect(controller.taskForPosture('unknown').id, 'posture-check');
   });
 
+  // 確認健康紀錄轉成 JSON 後仍可正確還原。
   test('wellness records preserve the intervention contract', () {
     final record = WellnessRecord(
       taskId: 'neck-reset',

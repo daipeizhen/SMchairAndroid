@@ -3,11 +3,13 @@ import 'screens/home_page.dart';
 import 'state/chair_sync_controller.dart';
 import 'state/wellness_controller.dart';
 
+/// 初始化 Flutter 並啟動 Smart Chair 應用程式。
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   runApp(const SmartChairApp());
 }
 
+/// 應用程式根元件，負責共用控制器與全域主題。
 class SmartChairApp extends StatefulWidget {
   const SmartChairApp({super.key});
 
@@ -28,17 +30,20 @@ class _SmartChairAppState extends State<SmartChairApp> {
   @override
   void initState() {
     super.initState();
+    // 整個應用程式生命週期共用這兩個控制器實例。
     chairSyncController = ChairSyncController();
     wellnessController = WellnessController();
   }
 
   @override
   void dispose() {
+    // 應用程式根元件卸載時，釋放控制器計時器與監聽器。
     chairSyncController.dispose();
     wellnessController.dispose();
     super.dispose();
   }
 
+  /// 套用全域 Material 主題並載入主頁外殼。
   @override
   Widget build(BuildContext context) {
     final colorScheme = ColorScheme.fromSeed(

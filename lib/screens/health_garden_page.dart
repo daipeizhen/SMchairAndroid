@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../models/wellness_models.dart';
 import '../state/wellness_controller.dart';
 
+/// 顯示推薦健康任務、花園成長狀態與完成紀錄。
 class HealthGardenPage extends StatefulWidget {
   const HealthGardenPage({
     super.key,
@@ -19,10 +20,12 @@ class HealthGardenPage extends StatefulWidget {
   State<HealthGardenPage> createState() => _HealthGardenPageState();
 }
 
+/// 管理花園動畫，並透過控制器處理任務完成回饋。
 class _HealthGardenPageState extends State<HealthGardenPage>
     with SingleTickerProviderStateMixin {
   late final AnimationController _gardenAnimation;
 
+  /// 啟動花園動畫並載入使用者的任務完成紀錄。
   @override
   void initState() {
     super.initState();
@@ -36,6 +39,7 @@ class _HealthGardenPageState extends State<HealthGardenPage>
     });
   }
 
+  /// 停止動畫並移除控制器監聽器。
   @override
   void dispose() {
     _gardenAnimation.dispose();
@@ -43,12 +47,15 @@ class _HealthGardenPageState extends State<HealthGardenPage>
     super.dispose();
   }
 
+  /// 共用健康狀態變更時重新建置花園畫面。
   void _refresh() {
     if (mounted) setState(() {});
   }
 
+  /// 取得控制器目前每日計畫中的第一項任務。
   WellnessTask get _recommendedTask => widget.controller.tasks.first;
 
+  /// 收集任務完成後的回饋，再記錄完成狀態並顯示結果。
   Future<void> _complete(WellnessTask task) async {
     final feedback = await showModalBottomSheet<String>(
       context: context,
@@ -103,6 +110,7 @@ class _HealthGardenPageState extends State<HealthGardenPage>
     );
   }
 
+  /// 顯示花園、推薦介入任務、每日任務與歷史紀錄。
   @override
   Widget build(BuildContext context) {
     final controller = widget.controller;
@@ -135,6 +143,7 @@ class _HealthGardenPageState extends State<HealthGardenPage>
     );
   }
 
+  /// 顯示本機或後端同步的最新任務完成紀錄。
   Widget _historyCard(WellnessController controller) {
     final records = controller.records.take(8).toList();
     if (records.isEmpty) {
@@ -222,6 +231,7 @@ class _HealthGardenPageState extends State<HealthGardenPage>
     );
   }
 
+  /// 顯示花園等級、點數、連續天數與目前成長動畫。
   Widget _gardenHeader(WellnessController controller) {
     final progress = controller.growthProgress;
     final gardenLevel = controller.level.clamp(1, 4);
@@ -349,6 +359,7 @@ class _HealthGardenPageState extends State<HealthGardenPage>
     );
   }
 
+  /// 繪製會隨花園等級改變外觀的裝飾元素。
   Widget _gardenDecorations(int gardenLevel) {
     final decorations = gardenLevel >= 4
         ? ['🌲', '🦋', '🌼', '🍃', '✨']
@@ -383,6 +394,7 @@ class _HealthGardenPageState extends State<HealthGardenPage>
     );
   }
 
+  /// 標示目前選為推薦介入任務的項目。
   Widget _recommendedCard(WellnessTask task) {
     final accepted = widget.controller.activeTaskId == task.id;
     final completed = widget.controller.isCompletedToday(task.id);
@@ -512,6 +524,7 @@ class _HealthGardenPageState extends State<HealthGardenPage>
     );
   }
 
+  /// 顯示推薦介入任務的一列詳細資料。
   Widget _interventionDetail({
     required IconData icon,
     required String label,
@@ -542,6 +555,7 @@ class _HealthGardenPageState extends State<HealthGardenPage>
     );
   }
 
+  /// 顯示每日任務的所需時間、獎勵與完成狀態。
   Widget _taskCard(WellnessTask task) {
     final completed = widget.controller.isCompletedToday(task.id);
     return Container(

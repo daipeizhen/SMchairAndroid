@@ -1,15 +1,19 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 
+/// 指定登入表單目前顯示登入或註冊模式。
 enum AuthMode { login, register }
 
+/// 分類後端驗證錯誤，供表單內的提示使用。
 enum _LoginErrorKind { unknown, username, password }
 
+/// 收集帳號登入資料，並可讓使用者選擇座椅。
 class AuthPage extends StatefulWidget {
   const AuthPage({super.key, required this.initialMode});
 
   final AuthMode initialMode;
 
+  /// 使用者名稱已存在時，回傳註冊表單要顯示的錯誤。
   static String usernameValidationMessage({
     required bool isRegisterMode,
     required bool usernameExists,
@@ -24,6 +28,7 @@ class AuthPage extends StatefulWidget {
   State<AuthPage> createState() => _AuthPageState();
 }
 
+/// 管理登入表單狀態、帳號驗證流程與座椅選擇流程。
 class _AuthPageState extends State<AuthPage> {
   final _formKey = GlobalKey<FormState>();
   final _usernameController = TextEditingController();
@@ -45,6 +50,7 @@ class _AuthPageState extends State<AuthPage> {
   String? _selectedChairId;
   bool _isLoadingChairs = false;
 
+  /// 設定表單模式並還原先前儲存的座椅選擇。
   @override
   void initState() {
     super.initState();
@@ -52,6 +58,7 @@ class _AuthPageState extends State<AuthPage> {
     _loadSavedChair();
   }
 
+  /// 釋放登入表單持有的所有文字控制器。
   @override
   void dispose() {
     _usernameController.dispose();
@@ -71,11 +78,13 @@ class _AuthPageState extends State<AuthPage> {
   String get _subtitle =>
       _mode == AuthMode.login ? '登入後即可查看你的智慧座椅資料' : '註冊後即可開始使用完整功能';
 
+  /// 還原此裝置上次選取的座椅。
   Future<void> _loadSavedChair() async {
     final chairId = await ApiService.getSavedChairId();
     if (mounted) setState(() => _selectedChairId = chairId);
   }
 
+  /// 提示使用者從提供的線上清單中選取座椅。
   Future<String?> _showChairPicker(List<Map<String, dynamic>> chairs) async {
     var selectedId =
         chairs.any(
@@ -126,6 +135,7 @@ class _AuthPageState extends State<AuthPage> {
     );
   }
 
+  /// 載入可用座椅，並在登入或註冊後儲存選擇結果。
   Future<void> _chooseChair({bool promptAfterAuth = false}) async {
     if (_isLoadingChairs) return;
     setState(() => _isLoadingChairs = true);
@@ -174,6 +184,7 @@ class _AuthPageState extends State<AuthPage> {
     }
   }
 
+  /// 驗證使用者名稱是否可用、送出帳號資料並處理結果。
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -260,6 +271,7 @@ class _AuthPageState extends State<AuthPage> {
     }
   }
 
+  /// 透過對話框執行兩階段電子郵件驗證碼密碼重設流程。
   Future<void> _showForgotPasswordDialog() async {
     _forgotPasswordEmailController.text = _emailController.text.trim();
     _forgotPasswordUsernameController.text = _usernameController.text.trim();
@@ -267,7 +279,7 @@ class _AuthPageState extends State<AuthPage> {
     _forgotPasswordNewPasswordController.clear();
     _forgotPasswordConfirmPasswordController.clear();
 
-    // step 1 = 輸入帳號＋Email 索取驗證碼；step 2 = 輸入驗證碼＋新密碼完成重設
+    // 第一階段輸入帳號與電子郵件以索取驗證碼；第二階段輸入驗證碼與新密碼完成重設。
     var step = 1;
     var isBusy = false;
     var dialogError = '';
@@ -430,6 +442,7 @@ class _AuthPageState extends State<AuthPage> {
     );
   }
 
+  /// 後端未提供錯誤代碼時，推斷要標示的輸入欄位。
   _LoginErrorKind _classifyLoginError(String message) {
     final normalized = message.toLowerCase();
     if (normalized.contains('無此使用者名稱') ||
@@ -457,6 +470,7 @@ class _AuthPageState extends State<AuthPage> {
     return _LoginErrorKind.unknown;
   }
 
+  /// 依目前驗證模式建立登入或註冊表單。
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -585,7 +599,7 @@ class _AuthPageState extends State<AuthPage> {
                       ],
                       const SizedBox(height: 12),
 
-                      // Email（註冊時選填）
+                      // 電子郵件（註冊時選填）。
                       if (_mode == AuthMode.register) ...[
                         TextFormField(
                           controller: _emailController,
@@ -726,7 +740,7 @@ class _AuthPageState extends State<AuthPage> {
                                   _emailController.clear();
                                   _passwordController.clear();
                                   _confirmPasswordController.clear();
-                                  // height/weight removed from registration
+                                  // 註冊表單不再要求填寫身高與體重。
                                   _obscurePassword = true;
                                   _obscureConfirmPassword = true;
                                   _usernameServerError = '';
